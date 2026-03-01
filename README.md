@@ -19,3 +19,8 @@
     - gccではmainから始めるが，今回はEfiMainを指定してスタートする位置を自分で決めている．
     
 ---
+
+## Credits
+This project is based on the book:
+- **"ゼロからのOS自作入門" (MikanOS)** by [Kouta Uchida (uchan-nos)](https://github.com/uchan-nos/mikanos)
+- Some build tools and scripts are derived from [osbook/devenv](https://github.com/uchan-nos/osbook-en).
