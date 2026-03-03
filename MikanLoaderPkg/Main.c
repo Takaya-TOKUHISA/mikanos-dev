@@ -2,6 +2,7 @@
 #include <Library/UefiLib.h>                    // UEFIのライブラリ関数を定義(Printなど)
 #include <Library/UefiBootServicesTableLib.h>   // UEFIのブートサービステーブルを定義(gBSなど)
 #include <Library/PrintLib.h>                   // 高度なPrint関数を定義
+#include <Library/MemoryAllocationLib.h>        // mallocに近い感覚で必要なメモリを確保する
 #include <Protocol/LoadedImage.h>               // ロードされたイメージに関するプロトコルを定義
 #include <Protocol/SimpleFileSystem.h>          // ファイル操作の機能提供
 #include <Protocol/DiskIo2.h>                   // 非同期なオフセット指定での読み書きを提供
@@ -17,7 +18,7 @@ struct MemoryMap {
     UINT32 descriptor_version;                  // 記録フォーマットのバージョン
 };
 
-
+/* メモリマップ取得 */
 EFI_STATUS GetMemoryMap(struct MemoryMap* map) {
     /* メモリマップが用意されていない(小さすぎる)場合 */
     if(map->buffer == NULL){                    
@@ -34,7 +35,7 @@ EFI_STATUS GetMemoryMap(struct MemoryMap* map) {
         &map->descriptor_version);              // メモリディスクリプタのバージョン番号
 }
 
-
+/* メモリタイプの数字から文字への翻訳 */
 const CHAR16* GetMemoryTypeUnicode(EFI_MEMORY_TYPE type) {
     switch (type) {
         case EfiReservedMemoryType: return L"EfiReservedMemoryType";
@@ -95,6 +96,50 @@ EFI_STATUS SaveMemoryMap(struct MemoryMap* map, EFI_FILE_PROTOCOL* file) {
     return EFI_SUCCESS;
 }
 
+/* 画像描画のインターフェース */
+EFI_STATUS OpenGOP(EFI_HANDLE image_handle,
+                   EFI_GRAPHICS_OUTPUT_PROTOCOL** gop) {
+    UINTN num_gop_handles = 0;
+    EFI_HANDLE* gop_handles = NULL;
+    gBS->LocateHandleBuffer(
+        ByProtocol,
+        &gEfiGraphicsOutputProtocolGuid,    // 描画機能を持つものを探す
+        NULL,
+        &num_gop_handles,                   // 見つかった個数を入れる
+        &gop_handles);                      // そのリストを入れる
+    
+    gBS->OpenProtocol(
+        gop_handles[0],                     // リストの最初のデバイスを使う
+        &gEfiGraphicsOutputProtocolGuid,
+        (VOID**)gop,                        // GOPの使い方を示す構造体
+        image_handle,
+        NULL,
+        EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL);
+
+    FreePool(gop_handles);                  //デバイスを取得したのでリストは不要なため解放
+
+    return EFI_SUCCESS;
+}
+
+/* ピクセルフォーマットの数字から文字への変換 */
+const CHAR16* GetPixelFormatUnicode(EFI_GRAPHICS_PIXEL_FORMAT fmt) {
+    switch (fmt) {
+        case PixelRedGreenBlueReserved8BitPerColor:         // RGB型
+            return L"PixelRedGreenBlueReserved8BitPerColor";
+        case PixelBlueGreenRedReserved8BitPerColor:         // BGR型
+            return L"PixelBlueGreenRedReserved8BitPerColor";
+        case PixelBitMask:                                  // マスク値による計算が必要なタイプ
+            return L"PixelBitMask";
+        case PixelBltOnly:                                  // Blt関数経由でしか書けないタイプ
+            return L"PixelBltOnly";
+        case PixelFormatMax:                                // 境界値
+            return L"PixelFormatMax";
+        default:                                            // 不正な形式
+            return L"InvalidPixelFormat";
+    }
+}
+
+/* ルートディレクトリ取得 */
 EFI_STATUS OpenRootDir(EFI_HANDLE image_handle, EFI_FILE_PROTOCOL** root) {
     EFI_LOADED_IMAGE_PROTOCOL* loaded_image;
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* fs;
@@ -120,25 +165,45 @@ EFI_STATUS OpenRootDir(EFI_HANDLE image_handle, EFI_FILE_PROTOCOL** root) {
     return EFI_SUCCESS;
 }
 
+
 EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle, 
                            EFI_SYSTEM_TABLE *system_table) 
 {
-    Print(L"Hello, Mikan World!\n");// 画面にメッセージを表示
-    CHAR8 memmap_buf[4096 * 4];
-    struct MemoryMap memmap = {sizeof(memmap_buf), memmap_buf, 0, 0, 0, 0};
-    GetMemoryMap(&memmap);
+    Print(L"Hello, Mikan World!\n");            // 画面にメッセージを表示
+    CHAR8 memmap_buf[4096 * 4];                 // メモリマップのためのバッファ用意
+    struct MemoryMap memmap = {sizeof(memmap_buf), memmap_buf, 0, 0, 0, 0}; // MemoryMap構造体の作成と初期化
+    GetMemoryMap(&memmap);                      // UEFIから現在のメモリマップを読み出す
 
     EFI_FILE_PROTOCOL* root_dir;
-    OpenRootDir(image_handle, &root_dir);
+    OpenRootDir(image_handle, &root_dir);       // ディスクのrootを開く
 
     EFI_FILE_PROTOCOL* memmap_file;
     root_dir->Open(
         root_dir, &memmap_file, L"\\memmap",
         EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0);
 
-    SaveMemoryMap(&memmap, memmap_file);
+    SaveMemoryMap(&memmap, memmap_file);        // ファイルへの書き出し
     memmap_file->Close(memmap_file);
 
+    EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
+    OpenGOP(image_handle, &gop);                // UEFIからGOPを取得
+    /* 解像度，フォーマット，ピクセル数を表示 */
+    Print(L"Resolution: %ux%u, Pixel Format: %s, %u pixels/line\n",
+        gop->Mode->Info->HorizontalResolution,
+        gop->Mode->Info->VerticalResolution,
+        GetPixelFormatUnicode(gop->Mode->Info->PixelFormat),
+        gop->Mode->Info->PixelsPerScanLine);
+    /* フレームバッファのメモリ始端・終端，サイズの表示 */
+    Print(L"Frame Buffer: 0x%01x -0x%01x, Size: %lu bytes\n",
+        gop->Mode->FrameBufferBase,
+        gop->Mode->FrameBufferBase + gop->Mode->FrameBufferSize,
+        gop->Mode->FrameBufferSize);
+
+    UINT8* frame_buffer = (UINT8*)gop->Mode->FrameBufferBase; //フレームバッファの始端を8ビット単位のポインタにキャスト
+    /* フレームバッファの全容領分ループを回す */
+    for(UINTN i = 0; i < gop->Mode->FrameBufferSize; i++) {
+        frame_buffer[i] = 255;
+    }
 
     EFI_FILE_PROTOCOL* kernel_file;
     root_dir->Open(
@@ -170,7 +235,7 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
         AllocateAddress, EfiLoaderData,
         (kernel_file_size + 0xfff) / 0x1000, &kernel_base_addr);
     kernel_file->Read(kernel_file, &kernel_file_size, (VOID*)kernel_base_addr);
-    Print(L"Kernel: 0x%01x (%lu bytes)\n", kernel_base_addr, kernel_file_size);
+    Print(L"Kernel: 0x%0lx (%lu bytes)\n", kernel_base_addr, kernel_file_size);
 
     /* OSにとっては邪魔なため，今まで動いていたUEFI BIOSのブートサービスを停止 */
     EFI_STATUS status;
@@ -191,9 +256,9 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
     /* エントリポイントの計算・呼び出し */
     UINT64 entry_addr = *(UINT64*)(kernel_base_addr + 24);//24バイトまでにはヘッダが記述されるため，エントリポイントとしては+24
 
-    typedef void EntryPointType(void);//引数・返り値ともにvoidな変数の型を定義
-    EntryPointType* entry_point = (EntryPointType*)entry_addr; //そのような関数を指すポインタentry_pointにentry_addrを格納
-    entry_point(); //entry_pointを呼び出し(entry_addrから実行)
+    typedef void EntryPointType(void); //引数・返り値ともにvoidな変数の型を定義．
+    EntryPointType* entry_point = (EntryPointType*)entry_addr; //そのような関数を指すポインタentry_pointにentry_addrを格納．
+    entry_point(); //entry_pointを呼び出し(entry_addrから実行)．
 
     Print(L"ALL done\n");
 
