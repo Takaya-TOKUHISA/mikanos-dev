@@ -6,6 +6,7 @@
 #include <Protocol/SimpleFileSystem.h>          // ファイル操作の機能提供
 #include <Protocol/DiskIo2.h>                   // 非同期なオフセット指定での読み書きを提供
 #include <Protocol/BlockIo.h>                   // ブロック単位での読み書きを提供(512B等)
+#include <Guid/FileInfo.h>
 
 struct MemoryMap {
     UINTN buffer_size;                          // メモリマップ全体のサイズ
@@ -72,7 +73,7 @@ EFI_STATUS SaveMemoryMap(struct MemoryMap* map, EFI_FILE_PROTOCOL* file) {
     len = AsciiStrLen(header);
     file->Write(file, &len, header);
 
-    Print(L"map->buffer = %081x, map->map_size = %081x\n",
+    Print(L"map->buffer = %08lx, map->map_size = %08lx\n",
         map->buffer, map->map_size);
 
     EFI_PHYSICAL_ADDRESS iter;
@@ -84,7 +85,7 @@ EFI_STATUS SaveMemoryMap(struct MemoryMap* map, EFI_FILE_PROTOCOL* file) {
         EFI_MEMORY_DESCRIPTOR* desc = (EFI_MEMORY_DESCRIPTOR*)iter;
         len = AsciiSPrint(
             buf, sizeof(buf),
-            "%u, %x, %-ls, %081x, %lx, %lx\n",
+            "%u, %x, %-ls, %08lx, %lx, %lx\n",
             i, desc->Type, GetMemoryTypeUnicode(desc->Type),
             desc->PhysicalStart, desc->NumberOfPages,
             desc->Attribute & 0xffffflu);
@@ -137,6 +138,62 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
 
     SaveMemoryMap(&memmap, memmap_file);
     memmap_file->Close(memmap_file);
+
+
+    EFI_FILE_PROTOCOL* kernel_file;
+    root_dir->Open(
+        root_dir, &kernel_file, L"\\kernel.elf",
+        EFI_FILE_MODE_READ, 0);
+    /* EFI_FILE_INFOの最後のメンバは要素数が描かれていない配列である．
+       そのため，最後のメンバFileNameに\kernel.elfという12バイトの文字列を格納するために
+       (CHAR16) * 12して，構造体の大きさに足している */
+    UINTN file_info_size = sizeof(EFI_FILE_INFO) + sizeof(CHAR16) * 12; 
+    UINTN file_info_buffer[file_info_size];
+    /* file_info_bufferにファイル情報を書き込む */
+    kernel_file->GetInfo(
+        kernel_file, &gEfiFileInfoGuid,
+        &file_info_size, file_info_buffer);
+    
+    EFI_FILE_INFO* file_info = (EFI_FILE_INFO*)file_info_buffer; //UINTNのただの数字からEFI_FILE_INFOとして意味を持つデータになるようキャストする．
+    UINTN kernel_file_size = file_info->FileSize;
+
+    EFI_PHYSICAL_ADDRESS kernel_base_addr = 0x100000;
+    /* 
+    ファイルを十分に格納できるメモリ領域を確保する．
+    カーネルファイルを0x10000番地前提で作っているので，0x10000に指定して配置する．
+    ページ数 = (kernel_file_size + 0xfff) / 0x1000 
+    0x1000B = 4KiB:1ページの大きさ
+    0xfffはページサイズに合わせて端数の切り捨てを防ぐため
+    0x1000 - 1 = 0xfff
+    */
+    gBS->AllocatePages(
+        AllocateAddress, EfiLoaderData,
+        (kernel_file_size + 0xfff) / 0x1000, &kernel_base_addr);
+    kernel_file->Read(kernel_file, &kernel_file_size, (VOID*)kernel_base_addr);
+    Print(L"Kernel: 0x%01x (%lu bytes)\n", kernel_base_addr, kernel_file_size);
+
+    /* OSにとっては邪魔なため，今まで動いていたUEFI BIOSのブートサービスを停止 */
+    EFI_STATUS status;
+    status = gBS->ExitBootServices(image_handle, memmap.map_key);
+    if (EFI_ERROR(status)){
+        status = GetMemoryMap(&memmap);
+        if(EFI_ERROR(status)){
+            Print(L"failed to get memory map: %r\n", status);
+            while(1);
+        }
+        status = gBS->ExitBootServices(image_handle, memmap.map_key);
+        if(EFI_ERROR(status)){
+            Print(L"Could not exit boot service: %r\n", status);
+            while(1);
+        }
+    }
+
+    /* エントリポイントの計算・呼び出し */
+    UINT64 entry_addr = *(UINT64*)(kernel_base_addr + 24);//24バイトまでにはヘッダが記述されるため，エントリポイントとしては+24
+
+    typedef void EntryPointType(void);//引数・返り値ともにvoidな変数の型を定義
+    EntryPointType* entry_point = (EntryPointType*)entry_addr; //そのような関数を指すポインタentry_pointにentry_addrを格納
+    entry_point(); //entry_pointを呼び出し(entry_addrから実行)
 
     Print(L"ALL done\n");
 
