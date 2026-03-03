@@ -256,9 +256,9 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
     /* エントリポイントの計算・呼び出し */
     UINT64 entry_addr = *(UINT64*)(kernel_base_addr + 24);//24バイトまでにはヘッダが記述されるため，エントリポイントとしては+24
 
-    typedef void EntryPointType(void); //引数・返り値ともにvoidな変数の型を定義．
+    typedef void EntryPointType(UINT64, UINT64); //引数・返り値ともにvoidな変数の型を定義．
     EntryPointType* entry_point = (EntryPointType*)entry_addr; //そのような関数を指すポインタentry_pointにentry_addrを格納．
-    entry_point(); //entry_pointを呼び出し(entry_addrから実行)．
+    entry_point(gop->Mode->FrameBufferBase, gop->Mode->FrameBufferSize); //entry_pointを呼び出し(entry_addrから実行)．
 
     Print(L"ALL done\n");
 
