@@ -13,40 +13,89 @@
 struct PixelColor {
     uint8_t r, g, b;
 };
-/* const ___& x NULLが存在せず，リテラルを直接渡せる */
-/** WritePixelで一つの点を描画
- * @retval 0  成功
- * @retval !0 失敗 
+/* インターフェース部分 */
+class PixelWriter {
+    public:
+        /* コンストラクタ，config_にconfigを定数参照渡し */
+        PixelWriter(const FrameBufferConfig& config) : config_{config} {
+        }
+        /* デストラクタ */
+        virtual ~PixelWriter() = default;
+        /* 純粋仮想関数:プロトタイプ宣言に近く，子クラスでの実装を強制する */
+        virtual void Write(int x, int y, const PixelColor& c) = 0;
+
+    protected:
+        /* 描画ピクセルを計算する */
+        uint8_t* PixelAt (int x, int y) {
+            return config_.frame_buffer + 4 * (config_.pixels_per_scan_line * y + x);
+        }
+    
+    private:
+        const FrameBufferConfig& config_;
+};
+
+class RGBResv8BitPerColorPixelWriter : public PixelWriter {
+    public:
+        using PixelWriter::PixelWriter; // PixelWriterを継承し，そのまま利用する
+        /* 純粋仮想関数をオーバーライドして，RGB型で実装する */
+        virtual void Write(int x, int y, const PixelColor& c) override {
+            auto p = PixelAt(x, y);
+            p[0] = c.r;
+            p[1] = c.g;
+            p[2] = c.b;
+        }
+};
+
+class BGRResv8BitPerColorPixelWriter : public PixelWriter {
+    public:
+        using PixelWriter::PixelWriter;
+        /* 純粋仮想関数をオーバーライドして，RGB型で実装する */
+        virtual void Write(int x, int y, const PixelColor& c) override {
+            auto p = PixelAt(x, y);
+            p[0] = c.b;
+            p[1] = c.g;
+            p[2] = c.r;
+        }
+};
+
+/* 
+ * <new>をインクルードすることでも実装可能　こちらで指定したメモリ領域のポインタを返す
+ * 一般的なnewではヒープ領域を利用するmallocに近く，コンストラクタを呼び出す点が異なる．
+ * newではメモリ管理機能が必要であるが，まだ実装していない段階なのでクラスインスタンスを作るため，配置newを実装する．
+ * 配列を使うことで好きな大きさのメモリ領域を確保し，配置newを呼び出すことでインスタンス生成が可能になる．
  */
-int WritePixel(const FrameBufferConfig& config,
-               int x, int y, const PixelColor& c) {
-    const int pixel_position = config.pixels_per_scan_line * y + x;
-    if (config.pixel_format == kPixelRGBResv8BitPerColor) {
-        uint8_t* p = &config.frame_buffer[4 * pixel_position];
-        p[0] = c.r;
-        p[1] = c.g;
-        p[2] = c.b;
-    } else if (config.pixel_format == kPixelBGRResv8BitPerColor) {
-        uint8_t* p = &config.frame_buffer[4 * pixel_position];
-        p[0] = c.b;
-        p[1] = c.g;
-        p[2] = c.r;
-    } else {
-        return -1;
-    }
-    return 0;
+void* operator new(size_t size, void* buf){
+    return buf;
+}
+/* リンク時にエラーになるので実装 */
+void operator delete(void* obj) noexcept {
 }
 
+char pixel_writer_buf[sizeof(RGBResv8BitPerColorPixelWriter)];
+PixelWriter* pixel_writer;
 
 extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
+    /* フォーマットによって利用するクラスを切り替え */
+    switch (frame_buffer_config.pixel_format) {
+        case kPixelRGBResv8BitPerColor:
+            pixel_writer = new(pixel_writer_buf)
+                RGBResv8BitPerColorPixelWriter{frame_buffer_config};
+        break;
+        case kPixelBGRResv8BitPerColor:
+            pixel_writer = new(pixel_writer_buf)
+                BGRResv8BitPerColorPixelWriter{frame_buffer_config};
+        break;
+    }
+    /* 白背景描画 */
     for (int x = 0; x < frame_buffer_config.horizontal_resolution; ++x) {
         for(int y = 0; y < frame_buffer_config.vertical_resolution; ++y) {
-            WritePixel(frame_buffer_config, x, y, {MAXVAL, MAXVAL, MAXVAL});
+            pixel_writer->Write(x, y, {MAXVAL, MAXVAL, MAXVAL});
         }
     }
+    /* 緑色の視覚を描画 */
     for(int x = 0; x < 200; ++x){
         for(int y = 0; y < 100; ++y) {
-            WritePixel(frame_buffer_config, 100 + x, 100 + y, {0, MAXVAL, 0});
+            pixel_writer->Write(x, y, {0, MAXVAL, 0});
         }
     }
     while (1) __asm__("hlt");
