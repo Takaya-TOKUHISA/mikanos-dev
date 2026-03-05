@@ -10,6 +10,24 @@
 
 #define MAXVAL 255
 
+const uint8_t kFontA[16] = {
+    0b00000000, //
+    0b00011000, //    **
+    0b00011000, //    **
+    0b00011000, //    **
+    0b00100100, //   *  *
+    0b00100100, //   *  *
+    0b00100100, //   *  *
+    0b00100100, //   *  *
+    0b01111110, //  ****** 
+    0b01000010, //  *    *
+    0b01000010, //  *    *
+    0b01000010, //  *    *
+    0b11100111, // ***  ***
+    0b00000000, //
+    0b00000000, //
+};
+
 struct PixelColor {
     uint8_t r, g, b;
 };
@@ -58,8 +76,22 @@ class BGRResv8BitPerColorPixelWriter : public PixelWriter {
         }
 };
 
+void WriteAscii(PixelWriter& writer, int x, int y, char c, const PixelColor& color){
+    if (c != 'A') {
+        return;
+    }
+    for (int dy = 0; dy < 16; ++dy) {
+        for (int dx = 0; dx < 8; ++dx) {
+            if((kFontA[dy] << dx) & 0x80u) {
+                writer.Write(x + dx, y + dy, color);
+            } 
+        }
+    }
+}
+
 /* 
- * <new>をインクルードすることでも実装可能　こちらで指定したメモリ領域のポインタを返す
+ * <new>をインクルードすることでも実装可能
+ * こちらで指定したメモリ領域のポインタを返す
  * 一般的なnewではヒープ領域を利用するmallocに近く，コンストラクタを呼び出す点が異なる．
  * newではメモリ管理機能が必要であるが，まだ実装していない段階なのでクラスインスタンスを作るため，配置newを実装する．
  * 配列を使うことで好きな大きさのメモリ領域を確保し，配置newを呼び出すことでインスタンス生成が可能になる．
@@ -98,5 +130,7 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
             pixel_writer->Write(x, y, {0, MAXVAL, 0});
         }
     }
+    WriteAscii(*pixel_writer, 50, 50, 'A', {0, 0, 0});
+    WriteAscii(*pixel_writer, 58, 50, 'A', {0, 0, 0});
     while (1) __asm__("hlt");
 }
