@@ -31,6 +31,27 @@ void operator delete(void* obj) noexcept {
 char pixel_writer_buf[sizeof(RGBResv8BitPerColorPixelWriter)];
 PixelWriter* pixel_writer;
 
+char console_buf[sizeof(Console)];
+Console* console;
+
+int printk(const char* format, ...){
+    va_list ap;
+    int result;
+    char s[1024];
+    
+    va_start(ap, format); //apをformatの次の引数にセットする
+    /*
+     * apを一つの引数ごとにスライドさせて受け取る．
+     * 引数が過剰な場合は単に無視され，過小な場合には未定義動作となる
+     * 最大1024バイトであること以外はprintfと変わらない
+     */
+    result = vsprintf(s, format, ap); 
+    va_end(ap);
+
+    console->PutString(s);
+    return result;
+}
+
 extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
     /* フォーマットによって利用するクラスを切り替え */
     switch (frame_buffer_config.pixel_format) {
@@ -49,12 +70,10 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
             pixel_writer->Write(x, y, {MAXVAL, MAXVAL, MAXVAL});
         }
     }
-    Console console{*pixel_writer, {0, 0, 0}, {MAXVAL, MAXVAL, MAXVAL}};
+    console = new(console_buf) Console{*pixel_writer, {0, 0, 0}, {MAXVAL, MAXVAL, MAXVAL}};
 
-    char buf[128];
     for(int i = 0; i < 27; ++i){
-        sprintf(buf, "line %d\n", i);
-        console.PutString(buf);
+        printk("printk: %d\n", i);
     }
     while (1) __asm__("hlt");
 }
