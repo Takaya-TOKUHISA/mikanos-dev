@@ -11,14 +11,6 @@
 #include "font.hpp"
 #define MAXVAL 255
 
-
-
-
-
-
-
-
-
 /* 
  * <new>をインクルードすることでも実装可能
  * こちらで指定したメモリ領域のポインタを返す
@@ -60,9 +52,11 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
             pixel_writer->Write(x, y, {0, MAXVAL, 0});
         }
     }
-    /* AA */
-    WriteAscii(*pixel_writer, 50, 50, 'A', {0, 0, 0});
-    WriteAscii(*pixel_writer, 58, 50, 'A', {0, 0, 0});
+    /* フォント全部 */
+    int i = 0;
+    for (char c = '!'; c <= '~'; ++c, ++i) {
+        WriteAscii(*pixel_writer, 8 * i, 50, c, {0, 0, 0});
+    }
 
     while (1) __asm__("hlt");
 }
