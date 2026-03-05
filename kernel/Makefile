@@ -1,6 +1,8 @@
 TARGET = kernel.elf # 成果物
-OBJS = main.o		# 必要なオブジェクト群
-CXXFLAGS += -O2 -Wall -g --target=x86_64-eld -ffreestanding -mno-red-zone \
+OBJS = main.o graphics.o font.o		# 必要なオブジェクト群
+DEPENDS = $(join $(dir $(OBJS)),$(addprefix .,$(notdir $(OBJS:.o=.d))))
+
+CXXFLAGS += -O2 -Wall -g --target=x86_64-elf -ffreestanding -mno-red-zone \
 			-fno-exceptions -fno-rtti -std=c++17	# コンパイルオプション
 LDFLAGS	 += --entry KernelMain -z norelro --image-base 0x100000 --static # リンクオプション
 
@@ -17,3 +19,14 @@ kernel.elf: $(OBJS) Makefile
 
 %.o: %.cpp Makefile
 		clang++ $(CPPFLAGS) $(CXXFLAGS) -c $<
+
+.%.d: %.cpp	
+	clang++ $(CPPFLAGS) $(CXXFLAGS) -MM $< > $@
+	$(eval OBJ = $(<:.cpp=.o))
+	sed --in-place 's|$(notdir $(OBJ))|$(OBJ)|' $@
+
+.PHONY: depends
+depends:
+	$(MAKE) $(DEPENDS)
+
+-include $(DEPENDS)

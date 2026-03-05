@@ -7,87 +7,17 @@
 #include <cstddef>
 
 #include "frame_buffer_config.hpp"
-
+#include "graphics.hpp"
+#include "font.hpp"
 #define MAXVAL 255
 
-const uint8_t kFontA[16] = {
-    0b00000000, //
-    0b00011000, //    **
-    0b00011000, //    **
-    0b00011000, //    **
-    0b00100100, //   *  *
-    0b00100100, //   *  *
-    0b00100100, //   *  *
-    0b00100100, //   *  *
-    0b01111110, //  ****** 
-    0b01000010, //  *    *
-    0b01000010, //  *    *
-    0b01000010, //  *    *
-    0b11100111, // ***  ***
-    0b00000000, //
-    0b00000000, //
-};
 
-struct PixelColor {
-    uint8_t r, g, b;
-};
-/* インターフェース部分 */
-class PixelWriter {
-    public:
-        /* コンストラクタ，config_にconfigを定数参照渡し */
-        PixelWriter(const FrameBufferConfig& config) : config_{config} {
-        }
-        /* デストラクタ */
-        virtual ~PixelWriter() = default;
-        /* 純粋仮想関数:プロトタイプ宣言に近く，子クラスでの実装を強制する */
-        virtual void Write(int x, int y, const PixelColor& c) = 0;
 
-    protected:
-        /* 描画ピクセルを計算する */
-        uint8_t* PixelAt (int x, int y) {
-            return config_.frame_buffer + 4 * (config_.pixels_per_scan_line * y + x);
-        }
-    
-    private:
-        const FrameBufferConfig& config_;
-};
 
-class RGBResv8BitPerColorPixelWriter : public PixelWriter {
-    public:
-        using PixelWriter::PixelWriter; // PixelWriterを継承し，そのまま利用する
-        /* 純粋仮想関数をオーバーライドして，RGB型で実装する */
-        virtual void Write(int x, int y, const PixelColor& c) override {
-            auto p = PixelAt(x, y);
-            p[0] = c.r;
-            p[1] = c.g;
-            p[2] = c.b;
-        }
-};
 
-class BGRResv8BitPerColorPixelWriter : public PixelWriter {
-    public:
-        using PixelWriter::PixelWriter;
-        /* 純粋仮想関数をオーバーライドして，RGB型で実装する */
-        virtual void Write(int x, int y, const PixelColor& c) override {
-            auto p = PixelAt(x, y);
-            p[0] = c.b;
-            p[1] = c.g;
-            p[2] = c.r;
-        }
-};
 
-void WriteAscii(PixelWriter& writer, int x, int y, char c, const PixelColor& color){
-    if (c != 'A') {
-        return;
-    }
-    for (int dy = 0; dy < 16; ++dy) {
-        for (int dx = 0; dx < 8; ++dx) {
-            if((kFontA[dy] << dx) & 0x80u) {
-                writer.Write(x + dx, y + dy, color);
-            } 
-        }
-    }
-}
+
+
 
 /* 
  * <new>をインクルードすることでも実装可能
@@ -130,7 +60,9 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
             pixel_writer->Write(x, y, {0, MAXVAL, 0});
         }
     }
+    /* AA */
     WriteAscii(*pixel_writer, 50, 50, 'A', {0, 0, 0});
     WriteAscii(*pixel_writer, 58, 50, 'A', {0, 0, 0});
+
     while (1) __asm__("hlt");
 }
