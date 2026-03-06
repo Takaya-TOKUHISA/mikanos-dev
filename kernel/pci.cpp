@@ -25,15 +25,14 @@ namespace {
     }
 
     /** @brief devices[num_device] に情報を書き込み num_device をインクリメントする */
-    Error AddDevice(uint8_t bus, uint8_t device,
-                    uint8_t function, uint8_t header_type) {
+    Error AddDevice(const Device& device) {
         if (num_device == devices.size()) {
-            return Error::kFull;
+            return MAKE_ERROR(Error::kFull);
         }
 
-        devices[num_device] = Device{bus, device, function, header_type};
+        devices[num_device] = device;
         ++num_device;
-        return Error::kSuccess;
+        return MAKE_ERROR(Error::kSuccess);
     }
 
     Error ScanBus(uint8_t bus);
@@ -41,28 +40,27 @@ namespace {
      * もし PCI-PCI ブリッジなら，セカンダリバスに対し ScanBus を実行する
      */
     Error ScanFunction(uint8_t bus, uint8_t device, uint8_t function) {
+        auto class_code = ReadClassCode(bus, device, function);
         auto header_type = ReadHeaderType(bus, device, function);
+
+        Device dev{bus, device, function, header_type, class_code};
         /**
          * 新しいデバイスを追加する 
          * 多すぎてもうはいらない場合は探索しても意味がないので中止する
          */
-        if (auto err = AddDevice(bus, device, function, header_type)) {
+        if (auto err = AddDevice(dev)) {
             return err;
         }
 
-        auto class_code = ReadClassCode(bus, device, function);
-        uint8_t base = (class_code >> 24) & 0xffu; // classcode / 2^24して末尾8ビットを抽出(ベースクラス)
-        uint8_t sub = (class_code >> 16) & 0xffu;  // classcode / 2^16して末尾8ビットを抽出(サブクラス)
-
         /* PCI-to-PCI ブリッジならば，セカンダリバスのほうの PCI デバイスも探索 */
-        if (base == 0x06u && sub == 0x04u) {
+        if (class_code.Match(0x06u, 0x04u)) {
             // standard Pci-Pci bridge
             auto bus_numbers = ReadBusNumbers(bus, device, function);
             uint8_t secondary_bus = (bus_numbers >> 8) & 0xffu;
             return ScanBus(secondary_bus);
         }
 
-        return Error::kSuccess;
+        return MAKE_ERROR(Error::kSuccess);
     }
 
     /** @brief 指定のデバイス番号の各ファンクションをスキャンする
@@ -72,8 +70,8 @@ namespace {
         if(auto err = ScanFunction(bus, device, 0)) {
             return err;
         }
-        if(IsSignaleFunctionDevice(ReadHeaderType(bus, device, 0))) {
-            return Error::kSuccess;
+        if(IsSingleFunctionDevice(ReadHeaderType(bus, device, 0))) {
+            return MAKE_ERROR(Error::kSuccess);
         }
 
         for (uint8_t function = 1; function < 8; ++function) {
@@ -85,7 +83,7 @@ namespace {
                 return err;
             }
         }
-        return Error::kSuccess;
+        return MAKE_ERROR(Error::kSuccess);
     }
 
     /** @brief 指定のバス番号の各デバイスをスキャンする
@@ -101,7 +99,7 @@ namespace {
                 return err;
             }
         }
-        return Error::kSuccess;
+        return MAKE_ERROR(Error::kSuccess);
     }
 }
 
@@ -133,9 +131,14 @@ namespace pci {
         return (ReadData() >> 16) & 0xffu;
     }
 
-    uint32_t ReadClassCode(uint8_t bus, uint8_t device, uint8_t function) {
+    ClassCode ReadClassCode(uint8_t bus, uint8_t device, uint8_t function) {
         WriteAddress(MakeAddress(bus, device, function, 0x08));
-        return ReadData();
+        auto reg = ReadData();
+        ClassCode cc;
+        cc.base         = (reg >> 24) & 0xffu;
+        cc.sub          = (reg >> 16) & 0xffu;
+        cc.interface    = (reg >> 8)  & 0xffu;
+        return cc;
     }
 
     uint32_t ReadBusNumbers(uint8_t bus, uint8_t device, uint8_t function) {
@@ -143,7 +146,7 @@ namespace pci {
         return ReadData();
     }
 
-    bool IsSignaleFunctionDevice(uint8_t header_type) {
+    bool IsSingleFunctionDevice(uint8_t header_type) {
         return (header_type & 0x80u) == 0; //ビット７(0x80)が１の場合マルチファンクションデバイス
     }
 
@@ -151,11 +154,11 @@ namespace pci {
         num_device = 0;
 
         auto header_type = ReadHeaderType(0, 0, 0); // ホストの読み込み
-        if (IsSignaleFunctionDevice(header_type)) {
+        if (IsSingleFunctionDevice(header_type)) {
             return ScanBus(0);
         }
 
-        for (uint8_t function = 1; function < 8; ++function) {
+        for (uint8_t function = 0; function < 8; ++function) {
             if (ReadVendorId(0, 0, function) == 0xffffu) {
                 continue;
             }
@@ -163,6 +166,40 @@ namespace pci {
                 return err;
             }
         }
-        return Error::kSuccess;
+        return MAKE_ERROR(Error::kSuccess);
+    }
+
+    uint32_t ReadConfReg(const Device& dev, uint8_t reg_addr) {
+        WriteAddress(MakeAddress(dev.bus, dev.device, dev.function, reg_addr));
+        return ReadData();
+    }
+    void WriteConfReg(const Device& dev, uint8_t reg_addr, uint32_t value) {
+        WriteAddress(MakeAddress(dev.bus, dev.device, dev.function, reg_addr));
+        WriteData(value);
+    }
+
+    WithError<uint64_t> ReadBar(Device& device, unsigned int bar_index) {
+        if (bar_index >= 6) {
+            return {0, MAKE_ERROR(Error::kIndexOutOfRange)};
+        }
+
+        const auto addr = CalcBarAddress(bar_index);
+        const auto bar = ReadConfReg(device, addr);
+
+        //32 bit
+        if((bar & 4u) == 0) {
+            return {bar, MAKE_ERROR(Error::kSuccess)};
+        }
+
+        // 64 bit
+        if(bar_index >= 5) {
+            return {0, MAKE_ERROR(Error::kIndexOutOfRange)};
+        }
+
+        const auto bar_upper = ReadConfReg(device, addr + 4);
+        return {
+            bar | (static_cast<uint64_t>(bar_upper) << 32),
+            MAKE_ERROR(Error::kSuccess)
+        };
     }
 }
