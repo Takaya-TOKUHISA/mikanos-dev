@@ -13,6 +13,8 @@
 #include "console.hpp"
 
 #define MAXVAL 255
+#define WHITE {MAXVAL, MAXVAL, MAXVAL}
+#define BLACK {0, 0, 0}
 
 /* 
  * <new>をインクルードすることでも実装可能
@@ -27,6 +29,39 @@ void* operator new(size_t size, void* buf){
 /* リンク時にエラーになるので実装 */
 void operator delete(void* obj) noexcept {
 }
+
+const PixelColor kDesktopBGColor{45, 118, 237};
+const PixelColor kDesktopFGColor = WHITE;
+
+/* カーソルサイズ */
+const int kMouseCursorWidth = 15;
+const int kMouseCursorHeight = 24;
+/* カーソルのピクセル配列 */
+const char mouse_cursor_shape[kMouseCursorHeight][kMouseCursorWidth + 1] = {
+    "@              ",
+    "@@             ",
+    "@..@           ",
+    "@...@          ",
+    "@....@         ",
+    "@.....@        ",
+    "@......@       ",
+    "@.......@      ",
+    "@........@     ",
+    "@.........@    ",
+    "@..........@   ",
+    "@...........@  ",
+    "@............@ ",
+    "@......@@@@@@@@",
+    "@......@       ",
+    "@....@@.@      ",
+    "@...@ @.@      ",
+    "@..@   @.@     ",
+    "@.@    @.@     ",
+    "@@      @.@    ",
+    "@       @.@    ",
+    "         @.@   ",
+    "         @@@   ",
+};
 
 char pixel_writer_buf[sizeof(RGBResv8BitPerColorPixelWriter)];
 PixelWriter* pixel_writer;
@@ -65,15 +100,48 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
         break;
     }
     /* 白背景描画 */
-    for (int x = 0; x < frame_buffer_config.horizontal_resolution; ++x) {
-        for(int y = 0; y < frame_buffer_config.vertical_resolution; ++y) {
-            pixel_writer->Write(x, y, {MAXVAL, MAXVAL, MAXVAL});
-        }
-    }
-    console = new(console_buf) Console{*pixel_writer, {0, 0, 0}, {MAXVAL, MAXVAL, MAXVAL}};
+    const int kFrameWidth = frame_buffer_config.horizontal_resolution;
+    const int kFrameHeight = frame_buffer_config.vertical_resolution;
+    
+    /* 初期画面を自由に描画できる */
+    /* 背景描画 */
+    FillRectangle(*pixel_writer,
+                  {0, 0},
+                  {kFrameWidth, kFrameHeight - 50},
+                  kDesktopBGColor);
+    /* タスクバー的な位置にある帯 */
+    FillRectangle(*pixel_writer,
+                  {0, kFrameHeight - 50},
+                  {kFrameWidth, 50},
+                  {1, 8, 17});
+    /* その左側にあるちょっと白めの帯 */
+    FillRectangle(*pixel_writer,
+                  {0, kFrameHeight - 50},
+                  {kFrameWidth / 5, 50},
+                  {80, 80, 80});
+    /* その左端にある'□' */
+    DrawRectangle(*pixel_writer,
+                  {10, kFrameHeight - 40},
+                  {30, 30},
+                  {160, 160, 160});
+    
 
-    for(int i = 0; i < 27; ++i){
-        printk("printk: %d\n", i);
+    console = new(console_buf) Console{
+        *pixel_writer, kDesktopFGColor, kDesktopBGColor
+    };
+    printk("Welcome to MikanOS!\n");
+
+    /* カーソル描画 */
+    for(int dy = 0; dy < kMouseCursorHeight; ++dy){
+        for(int dx = 0; dx < kMouseCursorWidth; ++dx){
+            /* 黒枠 */
+            if ( mouse_cursor_shape[dy][dx] == '@') {
+                pixel_writer->Write(200 + dx, 100 + dy, BLACK);
+            /* 白部分 */
+            }else if(mouse_cursor_shape[dy][dx] == '.') {
+                pixel_writer->Write(200 + dx, 100 + dy, WHITE);
+            }
+        }
     }
     while (1) __asm__("hlt");
 }
