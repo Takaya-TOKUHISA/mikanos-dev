@@ -1,5 +1,5 @@
 TARGET = kernel.elf # 成果物
-OBJS = main.o graphics.o font.o	hankaku.o newlib_support.o console.o	# 必要なオブジェクト群
+OBJS = main.o graphics.o font.o	hankaku.o newlib_support.o console.o pci.o asmfunc.o	# 必要なオブジェクト群
 DEPENDS = $(join $(dir $(OBJS)),$(addprefix .,$(notdir $(OBJS:.o=.d))))
 
 CFLAGS   += -O2 -Wall -g --target=x86_64-elf -ffreestanding -mno-red-zone
@@ -33,6 +33,9 @@ kernel.elf: $(OBJS) Makefile
 	clang $(CPPFLAGS) $(CFLAGS) -MM $< > $@
 	$(eval OBJ = $(<:.c=.o))
 	sed --in-place 's|$(notdir $(OBJ))|$(OBJ)|' $@
+
+%.o:%.asm Makefile
+	nasm -f elf64 -o $@ $<
 
 hankaku.bin: hankaku.txt
 	~/mikanos/tools/makefont.py -o $@ $<
