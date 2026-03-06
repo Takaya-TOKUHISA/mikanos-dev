@@ -11,6 +11,7 @@
 #include "graphics.hpp"
 #include "font.hpp"
 #include "console.hpp"
+#include "pci.hpp"
 
 #define MAXVAL 255
 #define WHITE {MAXVAL, MAXVAL, MAXVAL}
@@ -23,9 +24,6 @@
  * newではメモリ管理機能が必要であるが，まだ実装していない段階なのでクラスインスタンスを作るため，配置newを実装する．
  * 配列を使うことで好きな大きさのメモリ領域を確保し，配置newを呼び出すことでインスタンス生成が可能になる．
  */
-void* operator new(size_t size, void* buf){
-    return buf;
-}
 /* リンク時にエラーになるので実装 */
 void operator delete(void* obj) noexcept {
 }
@@ -142,6 +140,18 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
                 pixel_writer->Write(200 + dx, 100 + dy, WHITE);
             }
         }
+    }
+
+    auto err = pci::ScanAllBus();
+    printk("ScanAllBus: %s\n", err.Name());
+
+    for (int i = 0; i < pci::num_device; ++i){
+        const auto& dev = pci::devices[i];
+        auto vender_id = pci::ReadVendorId(dev.bus, dev.device, dev.function);
+        auto class_code = pci::ReadClassCode(dev.bus, dev.device, dev.function);
+        printk("%d.%d.%d: vend %04x, class%08x, head %02x\n",
+            dev.bus, dev.device, dev.function,
+            vender_id, class_code, dev.header_type);
     }
     while (1) __asm__("hlt");
 }
