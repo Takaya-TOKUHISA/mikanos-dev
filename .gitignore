@@ -23,3 +23,6 @@ mnt/
 # 5. エディタの一時ファイル（必要に応じて）
 .vscode/
 .DS_Store
+*.swp
+
+diff.txt
