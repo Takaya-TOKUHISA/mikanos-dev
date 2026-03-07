@@ -22,6 +22,8 @@
 #include "usb/classdriver/mouse.hpp"
 #include "usb/xhci/xhci.hpp"
 #include "usb/xhci/trb.hpp"
+#include "interrupt.hpp"
+#include "asmfunc.h"
 
 #define MAXVAL 255
 #define WHITE {MAXVAL, MAXVAL, MAXVAL}
@@ -81,6 +83,19 @@ void SwitchEhci2Xhci(const pci::Device& xhc_dev) {
     pci::WriteConfReg(xhc_dev, 0xd0, ehci2xhci_ports);
     Log(kDebug, "SwitchEhci2Xhci: SS = %02, xHCI = %02x\n",
         superspeed_ports, ehci2xhci_ports);
+}
+
+usb::xhci::Controller* xhc;
+
+__attribute__((interrupt))
+void IntHandlerXHCI(InterruptFrame* frame) {
+    while (xhc->PrimaryEventRing()->HasFront()) {
+        if (auto err = ProcessEvent(*xhc)) {
+            Log(kError, "Error while ProcessEvent: %s at %s:%d\n",
+                err.Name(), err.File(), err.Line());
+        }
+    }
+    NotifyEndOfInterrupt();
 }
 
 extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
@@ -167,6 +182,27 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
             xhc_dev->bus, xhc_dev->device, xhc_dev->function);
     }
 
+    const uint16_t cs = GetCS();
+    SetIDTEntry(idt[InterruptVector::kXHCI], MakeIDTAttr(DescriptorType::kInterruptGate, 0),
+                reinterpret_cast<uint64_t>(IntHandlerXHCI), cs);
+    /* IDT の場所を CPU に教える */
+    LoadIDT(sizeof(idt) - 1, reinterpret_cast<uintptr_t>(&idt[0]));
+
+    /** 0xfee00020の31:24を読み取ってそのプログラムが動作しているLocal APIC ID を取得する
+     * この時点では最初に起動する BSP のみしか動いていないため，BSP の Local APIC ID が取得される
+     */
+    const uint8_t bsp_local_apic_id = 
+        *reinterpret_cast<const uint32_t*>(0xfee00020) >> 24;
+
+    /** xHCに対してMSI割り込みを有効化する
+     * 第2引数: Destination ID フィールド
+     * 第5引数: Vector フィールド
+     */
+    pci::ConfigureMSIFixedDestination(
+        *xhc_dev, bsp_local_apic_id,
+        pci::MSITriggerMode::kLevel, pci::MSIDeliveryMode::kFixed,
+        InterruptVector::kXHCI, 0);
+
     /** xCHIの仕様ではxCHを制御するレジスタ群はMMIOである． 
      * そのため，MMIOという，メモリと同じように読み書きするメモリアドレスが付与されているレジスタを見る．
      * メモリアドレス空間のどこにあるのかは機種で異なる
@@ -200,6 +236,9 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
     Log(kInfo, "xHC starting\n");
     xhc.Run();
 
+    ::xhc = &xhc;
+    __asm__("sti");
+
 
     usb::HIDMouseDriver::default_observer = MouseObserver;
 
@@ -217,18 +256,13 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config) {
             }
         }
     }
+
     /** マウスが動いた際の情報がxHCにイベントという形で蓄積される
      * それを while で繰り返し読み取り，たまったイベントを処理するよう命令する．
-     * "busyloop"なポーリング! 
+     * "busy loop"なポーリング! 
      * 高頻度であれば効率はいいが，動いていない場合にもループし続けるのでCPUを無駄に使う
      * ループ頻度を上げると反応が悪くなる
      */
-    while (1) {
-        if (auto err = ProcessEvent(xhc)) {
-            Log(kError, "Error while ProcessEvent: %s at %s:%d\n",
-                err.Name(), err.File(), err.Line());
-        }
-    }
 
 
     while (1) __asm__("hlt");
