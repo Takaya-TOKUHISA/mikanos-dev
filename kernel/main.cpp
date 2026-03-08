@@ -26,6 +26,8 @@
 #include "interrupt.hpp"
 #include "asmfunc.h"
 #include "queue.hpp"
+#include "segment.hpp"
+#include "paging.hpp"
 
 #define MAXVAL 255
 #define WHITE {MAXVAL, MAXVAL, MAXVAL}
@@ -103,8 +105,16 @@ void IntHandlerXHCI(InterruptFrame* frame) {
     NotifyEndOfInterrupt();
 }
 
-extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config,
-                           const MemoryMap& memory_map) {
+/* 新しいスタック領域として，メモリ領域 kernel_main_stack を定義 */
+alignas(16) uint8_t kernel_main_stack[1024 * 1024];
+
+/** エントリーポイントを asm に変更するために関数名を変更
+ * 引数で渡された二つのデータ構造をスタック領域のコピーしておくために二行追加
+ */
+extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_ref,
+                           const MemoryMap& memory_map_ref) {
+    FrameBufferConfig frame_buffer_config{frame_buffer_config_ref};
+    MemoryMap memory_map{memory_map_ref}; 
     /* フォーマットによって利用するクラスを切り替え */
     switch (frame_buffer_config.pixel_format) {
         case kPixelRGBResv8BitPerColor:
@@ -149,26 +159,27 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config,
     printk("Welcome to MikanOS!\n");
     SetLogLevel(kWarn);             // kWarn レベルに設定する(他kDebug, kInfo, (kWarn), kError)
 
-    const std::array available_memory_types{
-        MemoryType::kEfiBootServicesCode,
-        MemoryType::kEfiBootServicesData,
-        MemoryType::kEfiConventionalMemory,
-    };
+    SetupSegments();
 
-    printk("memory_map: %p\n", &memory_map);
-    for (uintptr_t iter = reinterpret_cast<uintptr_t>(memory_map.buffer);
-         iter < reinterpret_cast<uintptr_t>(memory_map.buffer) + memory_map.map_size;
+    const uint16_t kernel_cs = 1 << 3; //
+    const uint16_t kernel_ss = 2 << 3; //
+    SetDSAll(0);                   // データアクセス用のセグメントレジスタを0にしておく
+    SetCSSS(kernel_cs, kernel_ss); //コード，データセグメントのセット
+
+    SetupIdentityPageTable();
+
+    const auto memory_map_base = reinterpret_cast<uintptr_t>(memory_map.buffer);
+    for (uintptr_t iter = memory_map_base;
+         iter < memory_map_base + memory_map.map_size;
          iter +=memory_map.descriptor_size) {
         auto desc = reinterpret_cast<MemoryDescriptor*>(iter);
-        for (int i = 0; i < available_memory_types.size(); ++i) {
-            if(desc->type == available_memory_types[i]){
-                printk("type = %u, phys = %08lx - %08lx, pages = %lu, attr = %08lx\n",
-                    desc->type,
-                    desc->physical_start,
-                    desc->physical_start + desc->number_of_pages * 4096 - 1,
-                    desc->number_of_pages,
-                    desc->attribute);
-            }
+        if(IsAvailable(static_cast<MemoryType>(desc->type))){
+            printk("type = %u, phys = %08lx - %08lx, pages = %lu, attr = %08lx\n",
+                desc->type,
+                desc->physical_start,
+                desc->physical_start + desc->number_of_pages * 4096 - 1,
+                desc->number_of_pages,
+                desc->attribute);
         }
     }
     mouse_cursor = new(mouse_cursor_buf) MouseCursor{
@@ -215,9 +226,8 @@ extern "C" void KernelMain(const FrameBufferConfig& frame_buffer_config,
             xhc_dev->bus, xhc_dev->device, xhc_dev->function);
     }
 
-    const uint16_t cs = GetCS();
     SetIDTEntry(idt[InterruptVector::kXHCI], MakeIDTAttr(DescriptorType::kInterruptGate, 0),
-                reinterpret_cast<uint64_t>(IntHandlerXHCI), cs);
+                reinterpret_cast<uint64_t>(IntHandlerXHCI), kernel_cs);
     /* IDT の場所を CPU に教える */
     LoadIDT(sizeof(idt) - 1, reinterpret_cast<uintptr_t>(&idt[0]));
 

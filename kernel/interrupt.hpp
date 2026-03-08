@@ -9,15 +9,7 @@
 #include <array>
 #include <cstdio>
 
-enum class DescriptorType {
-    kUpper8Bytes    = 0,
-    kLDT            = 2,
-    kTSSAvailable   = 9,
-    kTSSBusy        = 11,
-    kCallGate       = 12,
-    kInterruptGate  = 14,
-    kTrapGate       = 15,
-};
+#include "x86_descriptor.hpp"
 
 /* __attribute__((packed))はパディングの阻止
  * 勝手にパディングされてしまうとハード側のデータ構造との齟齬が生まれる
