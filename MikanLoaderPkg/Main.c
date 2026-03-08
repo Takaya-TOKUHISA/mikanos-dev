@@ -10,16 +10,8 @@
 #include <Protocol/BlockIo.h>                   // ブロック単位での読み書きを提供(512B等)
 #include <Guid/FileInfo.h>                      // ファイルのメタデータの取得
 #include "frame_buffer_config.hpp"
+#include "memory_map.hpp"
 #include "elf.hpp"
-
-struct MemoryMap {
-    UINTN buffer_size;                          // メモリマップ全体のサイズ
-    VOID* buffer;                               // 実際のメモリマップ・データの先頭アドレス  
-    UINTN map_size;                             // 書き込んだサイズ
-    UINTN map_key;                              // メモリの状態を表す番号
-    UINTN descriptor_size;                      // 一つのメモリ領域ごとのサイズ
-    UINT32 descriptor_version;                  // 記録フォーマットのバージョン
-};
 
 /* メモリマップ取得 */
 EFI_STATUS GetMemoryMap(struct MemoryMap* map) {
@@ -382,9 +374,10 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
             Halt();
     }
 
-    typedef void EntryPointType(const struct FrameBufferConfig*); //引数・返り値ともにvoidな変数の型を定義．
+    typedef void EntryPointType(const struct FrameBufferConfig*,
+                                const struct MemoryMap*);
     EntryPointType* entry_point = (EntryPointType*)entry_addr; //そのような関数を指すポインタentry_pointにentry_addrを格納．
-    entry_point(&config); //entry_pointを呼び出し(entry_addrから実行)．
+    entry_point(&config, &memmap); //entry_pointを呼び出し(entry_addrから実行)．
 
     Print(L"ALL done\n");
 
