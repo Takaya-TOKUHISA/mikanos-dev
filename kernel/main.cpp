@@ -28,6 +28,7 @@
 #include "queue.hpp"
 #include "segment.hpp"
 #include "paging.hpp"
+#include "memory_manager.hpp"
 
 #define MAXVAL 255
 #define WHITE {MAXVAL, MAXVAL, MAXVAL}
@@ -60,6 +61,9 @@ int printk(const char* format, ...){
     console->PutString(s);
     return result;
 }
+
+char memory_manager_buf[sizeof(BitmapMemoryManager)];
+BitmapMemoryManager* memory_manager;
 
 char mouse_cursor_buf[sizeof(MouseCursor)];
 MouseCursor* mouse_cursor;
@@ -168,20 +172,30 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
 
     SetupIdentityPageTable();
 
+    ::memory_manager = new(memory_manager_buf) BitmapMemoryManager;
+
     const auto memory_map_base = reinterpret_cast<uintptr_t>(memory_map.buffer);
+    uintptr_t available_end = 0;
     for (uintptr_t iter = memory_map_base;
          iter < memory_map_base + memory_map.map_size;
          iter +=memory_map.descriptor_size) {
-        auto desc = reinterpret_cast<MemoryDescriptor*>(iter);
+        auto desc = reinterpret_cast<const MemoryDescriptor*>(iter);
+        if (available_end < desc->physical_start) {
+            memory_manager->MarkAllocated(
+                FrameID{available_end / kBytePerFrame},
+                (desc->physical_start - available_end) / kBytePerFrame);
+        }
+        const auto physical_end = desc->physical_start + desc->number_of_pages * kUEFIPageSize;
         if(IsAvailable(static_cast<MemoryType>(desc->type))){
-            printk("type = %u, phys = %08lx - %08lx, pages = %lu, attr = %08lx\n",
-                desc->type,
-                desc->physical_start,
-                desc->physical_start + desc->number_of_pages * 4096 - 1,
-                desc->number_of_pages,
-                desc->attribute);
+            available_end = physical_end;
+        } else {
+            memory_manager->MarkAllocated(
+                FrameID{desc->physical_start / kBytePerFrame},
+                desc->number_of_pages * kUEFIPageSize / kBytePerFrame);
         }
     }
+    memory_manager->SetMemoryRange(FrameID{1}, FrameID{available_end / kBytePerFrame});
+
     mouse_cursor = new(mouse_cursor_buf) MouseCursor{
         pixel_writer, kDesktopBGColor, {300, 200}
     };
