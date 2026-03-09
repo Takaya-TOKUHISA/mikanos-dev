@@ -115,7 +115,7 @@ namespace {
 
         uint8_t msg_data_addr = cap_addr + 8;
         if (msi_cap.header.bits.addr_64_capable) {
-            msi_cap.msg_upper_addr = ReadConfReg(dev, msg_data_addr + 8);
+            msi_cap.msg_upper_addr = ReadConfReg(dev, cap_addr + 8);
             msg_data_addr = cap_addr + 12;
         }
 
@@ -142,7 +142,7 @@ namespace {
 
         uint8_t msg_data_addr = cap_addr + 8;
         if (msi_cap.header.bits.addr_64_capable) {
-            WriteConfReg(dev, msg_data_addr + 8, msi_cap.msg_upper_addr);
+            WriteConfReg(dev, cap_addr + 8, msi_cap.msg_upper_addr);
             msg_data_addr = cap_addr + 12;
         }
 

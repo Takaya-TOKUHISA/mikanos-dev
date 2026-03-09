@@ -1,6 +1,6 @@
 ; asmfunc.asm
 ;
-; System V AMD Calling Convention
+; System V AMD64 Calling Convention
 ; Registers: RDI, RSI, RDX, RCX, R8, R9
 
 bits 64

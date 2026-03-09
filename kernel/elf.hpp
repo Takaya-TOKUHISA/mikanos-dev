@@ -66,11 +66,11 @@ typedef struct {
     Elf64_Addr   r_offset;  // 再配置が必要なメモリの場所
     Elf64_Xword  r_info;    // 再配置の種類とシンボル情報
     Elf64_Sxword r_addend;  // 書き換える際に足し算する定数
-} Elf_Rela;
+} Elf64_Rela;
 
 //r_infoから情報を取り出すためのマクロ
 #define ELF64_R_SYM(i)      ((i)>>32)
 #define ELF64_R_TYPE(i)     ((i)&0xffffffffL)
-#define ELF64_Sxword(s,t)   (((s)<<32)+((t)&0xffffffffL))
+#define ELF64_R_INFO(s,t)   (((s)<<32)+((t)&0xffffffffL))
 
 #define R_X86_64_RELATIVE 8

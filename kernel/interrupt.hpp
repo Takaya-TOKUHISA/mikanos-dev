@@ -7,7 +7,7 @@
 #pragma once
 
 #include <array>
-#include <cstdio>
+#include <cstdint>
 
 #include "x86_descriptor.hpp"
 

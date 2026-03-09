@@ -32,6 +32,7 @@ enum class MemoryType {
     kEfiUnusableMemory,
     kEfiACPIReclaimMemory,
     kEfiACPIMemoryNVS,
+    kEfiMemoryMappedIO,
     kEfiMemoryMappedIOPortSpace,
     kEfiPalCode,
     kEfiPersistentMemory,
@@ -46,6 +47,9 @@ inline bool operator==(MemoryType lhs, uint32_t rhs) {
     return rhs == lhs;
 }
 
+/** 空き領域の判定
+ * 以下の三種類は空き領域としてよい状態
+ */
 inline bool IsAvailable(MemoryType memory_type) {
     return 
         memory_type == MemoryType::kEfiBootServicesCode ||
