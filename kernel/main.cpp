@@ -32,6 +32,8 @@
 #include "window.hpp"
 #include "layer.hpp"
 
+#include "timer.hpp"
+
 #define MAXVAL 255
 #define WHITE {MAXVAL, MAXVAL, MAXVAL}
 #define BLACK {0, 0, 0}
@@ -68,7 +70,11 @@ unsigned int mouse_layer_id;
 
 void MouseObserver(int8_t displacement_x, int8_t displacement_y) {
     layer_manager->MoveRelative(mouse_layer_id, {displacement_x, displacement_y});
+    StartLAPICTimer();
     layer_manager->Draw();
+    auto elapsed = LAPICTimerElapsed();
+    StopLAPCITimer();
+    printk("MouseObserver: elapsed = %u\n", elapsed);
 }
 
 void SwitchEhci2Xhci(const pci::Device& xhc_dev) {
@@ -139,6 +145,8 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
     printk("Welcome to MikanOS!\n");
     SetLogLevel(kWarn);             // kWarn レベルに設定する(他kDebug, kInfo, (kWarn), kError)
 
+    InitializeLAPICTimer();
+    
     SetupSegments();
 
     const uint16_t kernel_cs = 1 << 3; //

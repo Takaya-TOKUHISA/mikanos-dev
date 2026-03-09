@@ -5,9 +5,9 @@
 *.efi
 *.o
 *.bin
-*.elf
+/*.elf
 .*.d
-*.bin
+/*.bin
 # 2. ディスクイメージファイル
 # QEMU起動のたびに更新され、サイズも大きいため除外します
 *.img
@@ -26,3 +26,6 @@ mnt/
 *.swp
 
 diff.txt
+
+/html
+/ipxe_root

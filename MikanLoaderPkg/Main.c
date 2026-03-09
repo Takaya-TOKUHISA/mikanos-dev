@@ -2,8 +2,8 @@
 #include <Library/UefiLib.h>                    // UEFIのライブラリ関数を定義(Printなど)
 #include <Library/UefiBootServicesTableLib.h>   // UEFIのブートサービステーブルを定義(gBSなど)
 #include <Library/PrintLib.h>                   // 高度なPrint関数を定義
-#include <Library/BaseMemoryLib.h>              // string.hの代わり
 #include <Library/MemoryAllocationLib.h>        // mallocに近い感覚で必要なメモリを確保する
+#include <Library/BaseMemoryLib.h>              // string.hの代わり
 #include <Protocol/LoadedImage.h>               // ロードされたイメージに関するプロトコルを定義
 #include <Protocol/SimpleFileSystem.h>          // ファイル操作の機能提供
 #include <Protocol/DiskIo2.h>                   // 非同期なオフセット指定での読み書きを提供
@@ -201,7 +201,7 @@ void CopyLoadSegments(Elf64_Ehdr* ehdr){
         UINT64 segm_in_file = (UINT64)ehdr + phdr[i].p_offset;
         CopyMem((VOID*)phdr[i].p_vaddr, (VOID*)segm_in_file, phdr[i].p_filesz);
 
-        UINTN remain_bytes = phdr[i].p_memsz = phdr[i].p_filesz;
+        UINTN remain_bytes = phdr[i].p_memsz - phdr[i].p_filesz;
         SetMem((VOID*)(phdr[i].p_vaddr + phdr[i].p_filesz), remain_bytes, 0);
     }
 }
@@ -237,12 +237,12 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
     } else {
         status = SaveMemoryMap(&memmap, memmap_file);        // ファイルへの書き出し
         if(EFI_ERROR(status)){
-            Print(L"failed to save mamory map: %r\n", status);
+            Print(L"failed to save memory map: %r\n", status);
             Halt();
         }
         status = memmap_file->Close(memmap_file);
         if(EFI_ERROR(status)){
-            Print(L"failed to close mamory map: %r\n", status);
+            Print(L"failed to close memory map: %r\n", status);
             Halt();
         }
     }
@@ -267,7 +267,7 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
 
     UINT8* frame_buffer = (UINT8*)gop->Mode->FrameBufferBase; //フレームバッファの始端を8ビット単位のポインタにキャスト
     /* フレームバッファの全容領分ループを回す */
-    for (UINTN i = 0; i < gop->Mode->FrameBufferSize; i++) {
+    for (UINTN i = 0; i < gop->Mode->FrameBufferSize; ++i) {
         frame_buffer[i] = 255;
     }
 
@@ -276,7 +276,7 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
         root_dir, &kernel_file, L"\\kernel.elf",
         EFI_FILE_MODE_READ, 0);
     if(EFI_ERROR(status)){
-        Print(L"failed to open file:'\\kernel/elf': %r\n", status);
+        Print(L"failed to open file '\\kernel/elf': %r\n", status);
         Halt();
     }
     
@@ -284,7 +284,7 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
        そのため，最後のメンバFileNameに\kernel.elfという12バイトの文字列を格納するために
        (CHAR16) * 12して，構造体の大きさに足している */
     UINTN file_info_size = sizeof(EFI_FILE_INFO) + sizeof(CHAR16) * 12; 
-    UINTN file_info_buffer[file_info_size];
+    UINT8 file_info_buffer[file_info_size];
     /* file_info_bufferにファイル情報を書き込む */
     status = kernel_file->GetInfo(
         kernel_file, &gEfiFileInfoGuid,
@@ -379,7 +379,7 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
     EntryPointType* entry_point = (EntryPointType*)entry_addr; //そのような関数を指すポインタentry_pointにentry_addrを格納．
     entry_point(&config, &memmap); //entry_pointを呼び出し(entry_addrから実行)．
 
-    Print(L"ALL done\n");
+    Print(L"All done\n");
 
     while (1);                      // 無限ループで停止
     return EFI_SUCCESS;             // 正常終了を示すステータスコードを返す
