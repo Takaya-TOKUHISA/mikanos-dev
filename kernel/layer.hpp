@@ -75,10 +75,12 @@ class LayerManager {
         void UpDown(unsigned int id, int new_height);
         /** @brief レイヤーを非表示とする。 */
         void Hide(unsigned int id);
+        /** @brief 指定された座標にウィンドウを持つ上に表示されているレイヤーを探す */
+        Layer* FindLayerByPosition(Vector2D<int> pos, unsigned int exclude_id) const;
 
     private:
         FrameBuffer* screen_{nullptr};
-        mutable FrameBuffer back_buffer_{};
+        mutable FrameBuffer back_buffer_{};      // mutable にすると const な関数内でも変更可能になる
         std::vector<std::unique_ptr<Layer>> layers_{};
         std::vector<Layer*> layer_stack_{};
         unsigned int latest_id_{0};

@@ -76,12 +76,19 @@ unsigned int mouse_layer_id;
 Vector2D<int> screen_size;
 Vector2D<int> mouse_position;
 
-void MouseObserver(int8_t displacement_x, int8_t displacement_y) {
+/* 第一引数でボタンの情報を受け取る */
+void MouseObserver(uint8_t buttons, int8_t displacement_x, int8_t displacement_y) {
+    static unsigned int mouse_drag_layer_id = 0;
+    static uint8_t previous_buttons = 0;
+
+    const auto oldpos = mouse_position;
     auto newpos = mouse_position + Vector2D<int>{displacement_x, displacement_y};
     /* マウス座標上限を(screen_size.x-1, screen.y-1)に制限 */
     newpos = ElementMin(newpos, screen_size + Vector2D<int>{-1, -1});
     /* マウス座標下限を(0, 0)に制限 */
     mouse_position = ElementMax(newpos, {0, 0});
+
+    const auto posdiff = mouse_position - oldpos;
 
     layer_manager->Move(mouse_layer_id, mouse_position);
     /* layer_manager->MoveRelative(mouse_layer_id, {displacement_x, displacement_y});
@@ -89,6 +96,26 @@ void MouseObserver(int8_t displacement_x, int8_t displacement_y) {
     auto elapsed = LAPICTimerElapsed();
     StopLAPICTimer();
     printk("MouseObserver: elapsed = %u\n", elapsed); */
+
+    const bool previous_left_pressed = (previous_buttons & 0x01);
+    const bool left_pressed = (buttons & 0x01);
+    /**
+     * 左ボタンが押された瞬間にマウスカーソルの位置にあるレイヤーの ID を取得する 
+     * 左ボタンが押されている間，カーソルレイヤを正しく取得できていればそのレイヤをカーソルと同様に移動させる．
+     */
+    if (!previous_left_pressed && left_pressed) {
+        auto layer = layer_manager->FindLayerByPosition(mouse_position, mouse_layer_id);
+        if (layer) {
+            mouse_drag_layer_id = layer->ID();
+        }
+    } else if (previous_left_pressed && left_pressed) {
+        if (mouse_drag_layer_id > 0) {
+            layer_manager->MoveRelative(mouse_drag_layer_id, posdiff);
+        }
+    } else if (previous_left_pressed && !left_pressed) {
+        mouse_drag_layer_id = 0;
+    }
+    previous_buttons = buttons;
 }
 
 void SwitchEhci2Xhci(const pci::Device& xhc_dev) {
@@ -157,7 +184,7 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
     };
     console->SetWriter(pixel_writer);
     printk("Welcome to MikanOS!\n");
-    SetLogLevel(kDebug);             // kWarn レベルに設定する(他kDebug, kInfo, (kWarn), kError)
+    SetLogLevel(kWarn);             // kWarn レベルに設定する(他kDebug, kInfo, (kWarn), kError)
 
     //InitializeLAPICTimer();
 
