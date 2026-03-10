@@ -146,7 +146,7 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
     SetLogLevel(kWarn);             // kWarn レベルに設定する(他kDebug, kInfo, (kWarn), kError)
 
     InitializeLAPICTimer();
-    
+
     SetupSegments();
 
     const uint16_t kernel_cs = 1 << 3; //
@@ -301,18 +301,25 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
     const int kFrameWidth = frame_buffer_config.horizontal_resolution;
     const int kFrameHeight = frame_buffer_config.vertical_resolution;
 
-    auto bgwindow = std::make_shared<Window>(kFrameWidth, kFrameHeight);
+    auto bgwindow = std::make_shared<Window>(
+        kFrameWidth, kFrameHeight, frame_buffer_config.pixel_format);
     auto bgwriter = bgwindow->Writer();
     DrawDesktop(*bgwriter);
     console->SetWriter(bgwriter);
 
     auto mouse_window = std::make_shared<Window>(
-        kMouseCursorWidth, kMouseCursorHeight);
+        kMouseCursorWidth, kMouseCursorHeight, frame_buffer_config.pixel_format);
     mouse_window->SetTransparentColor(kMouseTransparentColor);
     DrawMouseCursor(mouse_window->Writer(), {0, 0});
 
+    FrameBuffer screen;
+    if (auto err = screen.Initialize(frame_buffer_config)) {
+        Log(kError, "failed to initialize frame buffer: %s at %s:%d\n",
+            err.Name(), err.File(), err.Line());
+    }
+
     layer_manager = new LayerManager;
-    layer_manager->SetWriter(pixel_writer);
+    layer_manager->SetWriter(&screen);
     
     auto bglayer_id = layer_manager->NewLayer()
         .SetWindow(bgwindow)

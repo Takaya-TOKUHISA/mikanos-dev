@@ -1,32 +1,47 @@
 #include "window.hpp"
 
-Window::Window(int width, int height) : width_{width}, height_{height} {
+#include "logger.hpp"
+
+Window::Window(int width, int height, PixelFormat shadow_format) : width_{width}, height_{height} {
     data_.resize(height);
     for (int y = 0; y < height; ++y) {
         data_[y].resize(width);
+    }
+
+    FrameBufferConfig config{};
+    config.frame_buffer = nullptr;
+    config.horizontal_resolution = width;
+    config.vertical_resolution = height;
+    config.pixel_format = shadow_format;
+
+    /* 領域確保と初期化
+      コンストラクタ内ではエラーを起こした時に返り値がないのでそのままログを出して妥協する
+      */
+    if (auto err = shadow_buffer_.Initialize(config)) {
+        Log(kError, "failed to initialize shadow buffer: %s at %s:%d\n",
+            err.Name(), err.File(), err.Line());
     }
 }
 
 /** 透過色を持っているかどうかで処理が変わる
  * 透過色を持っている(マウスカーソル)なら現在参照しているピクセルが透過色のとき
  * At()でそのピクセル補背景色を持ってきて描画する
+ * 透過色がない時は shadow_buffer_からそのままコピーして描画する
+ * 透過色があるときは shadow_buffer_ から透過処理が必要なのでこれまで通り処理する
  */
-void Window::DrawTo(PixelWriter& writer, Vector2D<int> position) {
+void Window::DrawTo(FrameBuffer& dst, Vector2D<int> position) {
     if (!transparent_color_) {
-        for (int y = 0; y < Height(); ++y) {
-            for (int x = 0; x < Width(); ++x) {
-                writer.Write(position.x + x, position.y + y, At(x, y));
-            }
-        }
+        dst.Copy(position, shadow_buffer_);
         return;
     }
 
     const auto tc = transparent_color_.value();
+    auto& writer = dst.Writer();
     for (int y = 0; y < Height(); ++y) {
         for (int x = 0; x < Width(); ++x) {
-            const auto c = At(x, y);
+            const auto c = At(Vector2D<int>{x, y});
             if (c != tc) {
-                writer.Write(position.x + x, position.y + y, c);
+                writer.Write(position + Vector2D<int>{x, y}, c);
             }
         }
     }
@@ -40,12 +55,13 @@ Window::WindowWriter* Window::Writer() {
     return &writer_;
 }
 
-PixelColor& Window::At(int x, int y) {
-    return data_[y][x];
+const PixelColor& Window::At(Vector2D<int> pos) const {
+    return data_[pos.y][pos.x];
 }
-
-const PixelColor& Window::At(int x, int y) const {
-    return data_[y][x];
+/* シャドウバッファへの書き込みを実現するための関数 */
+void Window::Write(Vector2D<int> pos, PixelColor c) {
+    data_[pos.y][pos.x] = c;
+    shadow_buffer_.Writer().Write(pos, c);
 }
 
 int Window::Width() const {
