@@ -78,3 +78,5 @@ class Window {
         /* フレームバッファ形式のバッファ(8MiB) */
         FrameBuffer shadow_buffer_{};
 };
+
+void DrawWindow(PixelWriter& writer, const char* title);
