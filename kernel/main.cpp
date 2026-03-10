@@ -101,11 +101,12 @@ void MouseObserver(uint8_t buttons, int8_t displacement_x, int8_t displacement_y
     const bool left_pressed = (buttons & 0x01);
     /**
      * 左ボタンが押された瞬間にマウスカーソルの位置にあるレイヤーの ID を取得する 
-     * 左ボタンが押されている間，カーソルレイヤを正しく取得できていればそのレイヤをカーソルと同様に移動させる．
+     * 左ボタンが押されている間，カーソルレイヤを正しく取得できていればそのレイヤをカーソルと同様に移動させる
+     * 左ボタンを離した瞬間にレイヤの ID をリセットする
      */
     if (!previous_left_pressed && left_pressed) {
         auto layer = layer_manager->FindLayerByPosition(mouse_position, mouse_layer_id);
-        if (layer) {
+        if (layer && layer->IsDraggable()) {
             mouse_drag_layer_id = layer->ID();
         }
     } else if (previous_left_pressed && left_pressed) {
@@ -379,6 +380,7 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
         .ID();
     auto main_window_layer_id = layer_manager->NewLayer()
         .SetWindow(main_window)
+        .SetDraggable(true)
         .Move({300, 100})
         .ID();
     console->SetLayerID(layer_manager->NewLayer()
