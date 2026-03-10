@@ -5,4 +5,4 @@
 void InitializeLAPICTimer();
 void StartLAPICTimer();
 uint32_t LAPICTimerElapsed();
-void StopLAPCITimer();
+void StopLAPICTimer();

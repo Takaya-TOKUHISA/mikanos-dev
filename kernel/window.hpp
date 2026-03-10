@@ -61,11 +61,20 @@ class Window {
         /** @brief 平面描画領域の高さをピクセル単位で返す。 */
         int Height() const;
 
+        /** @brief このウィンドウの平面描画領域内で，矩形領域を移動する。
+         *
+         * @param src_pos   移動元矩形の原点
+         * @param src_size  移動元矩形の大きさ
+         * @param dst_pos   移動先の原点
+         */
+        void Move(Vector2D<int> dst_pos, const Rectangle<int>& src);
+
     private:
         int width_, height_;
         std::vector<std::vector<PixelColor>> data_{};
         WindowWriter writer_{*this};
         std::optional<PixelColor> transparent_color_{std::nullopt};
 
+        /* フレームバッファ形式のバッファ(8MiB) */
         FrameBuffer shadow_buffer_{};
 };

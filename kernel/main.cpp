@@ -62,7 +62,7 @@ int printk(const char* format, ...){
     StartLAPICTimer();
     console->PutString(s);
     auto elapsed = LAPICTimerElapsed();
-    StopLAPCITimer();
+    StopLAPICTimer();
 
     sprintf(s, "[%9d]", elapsed);
     console->PutString(s);
@@ -79,7 +79,7 @@ void MouseObserver(int8_t displacement_x, int8_t displacement_y) {
     StartLAPICTimer();
     layer_manager->Draw();
     auto elapsed = LAPICTimerElapsed();
-    StopLAPCITimer();
+    StopLAPICTimer();
     printk("MouseObserver: elapsed = %u\n", elapsed);
 }
 
@@ -311,7 +311,7 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
         kFrameWidth, kFrameHeight, frame_buffer_config.pixel_format);
     auto bgwriter = bgwindow->Writer();
     DrawDesktop(*bgwriter);
-    console->SetWriter(bgwriter);
+    console->SetWindow(bgwindow);
 
     auto mouse_window = std::make_shared<Window>(
         kMouseCursorWidth, kMouseCursorHeight, frame_buffer_config.pixel_format);
