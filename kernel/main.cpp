@@ -85,9 +85,8 @@ void MouseObserver(int8_t displacement_x, int8_t displacement_y) {
 
     layer_manager->Move(mouse_layer_id, mouse_position);
     /* layer_manager->MoveRelative(mouse_layer_id, {displacement_x, displacement_y});
-    StartLAPICTimer(); */
-    layer_manager->Draw();
-    /* auto elapsed = LAPICTimerElapsed();
+    StartLAPICTimer(); 
+    auto elapsed = LAPICTimerElapsed();
     StopLAPICTimer();
     printk("MouseObserver: elapsed = %u\n", elapsed); */
 }
@@ -158,7 +157,7 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
     };
     console->SetWriter(pixel_writer);
     printk("Welcome to MikanOS!\n");
-    SetLogLevel(kWarn);             // kWarn レベルに設定する(他kDebug, kInfo, (kWarn), kError)
+    SetLogLevel(kDebug);             // kWarn レベルに設定する(他kDebug, kInfo, (kWarn), kError)
 
     //InitializeLAPICTimer();
 
@@ -320,7 +319,6 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
         screen_size.x, screen_size.y, frame_buffer_config.pixel_format);
     auto bgwriter = bgwindow->Writer();
     DrawDesktop(*bgwriter);
-    console->SetWindow(bgwindow);
 
     auto mouse_window = std::make_shared<Window>(
         kMouseCursorWidth, kMouseCursorHeight, frame_buffer_config.pixel_format);
@@ -332,6 +330,9 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
         160, 52, frame_buffer_config.pixel_format);
     DrawWindow(*main_window->Writer(), "Hello Window");
 
+    auto console_window = std::make_shared<Window>(
+        Console::kColumns * 8, Console::kRows * 16, frame_buffer_config.pixel_format);
+    console->SetWindow(console_window);
     FrameBuffer screen;
     if (auto err = screen.Initialize(frame_buffer_config)) {
         Log(kError, "failed to initialize frame buffer: %s at %s:%d\n",
@@ -353,11 +354,17 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
         .SetWindow(main_window)
         .Move({300, 100})
         .ID();
+    console->SetLayerID(layer_manager->NewLayer()
+        .SetWindow(console_window)
+        .Move({0, 0})
+        .ID());
 
+    /* 最初の全体描画，レイヤの階層もこの際に設定する */
     layer_manager->UpDown(bglayer_id, 0);
-    layer_manager->UpDown(mouse_layer_id, 1);
-    layer_manager->UpDown(main_window_layer_id, 1);
-    layer_manager->Draw();
+    layer_manager->UpDown(console->LayerID(), 1);
+    layer_manager->UpDown(main_window_layer_id, 2);
+    layer_manager->UpDown(mouse_layer_id, 3);
+    layer_manager->Draw({{0, 0}, screen_size});
 
     char str[128];
     unsigned int count = 0;
@@ -367,7 +374,9 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
         sprintf(str, "%010u", count);
         FillRectangle(*main_window->Writer(), {24, 28}, {8 * 10, 16}, {0xc6, 0xc6, 0xc6});
         WriteString(*main_window->Writer(), {24, 28}, str, {0, 0, 0});
-        layer_manager->Draw();
+        /* メインウィンドウのIDを指定して再描画 */
+        layer_manager->Draw(main_window_layer_id);
+
         __asm__("cli");     // 割り込みフラグを0にして外部割込みを拒否する
         if (main_queue.Count() == 0) {
             __asm__("sti");
