@@ -2,6 +2,8 @@
 
 #include <cstring>
 #include "logger.hpp"
+#include "pci.hpp"
+#include "interrupt.hpp"
 #include "usb/setupdata.hpp"
 #include "usb/device.hpp"
 #include "usb/descriptor.hpp"
@@ -309,6 +311,27 @@ namespace {
              !r.bits.hc_os_owned_semaphore);
     Log(kDebug, "OS has owned xHC\n");
   }
+
+  void SwitchEhci2Xhci(const pci::Device& xhc_dev) {
+    bool intel_ehc_exist = false;
+    for (int i = 0; i < pci::num_device; ++i) {
+      if (pci::devices[i].class_code.Match(0x0cu, 0x03u, 0x20u) /* EHCI */ &&
+          0x8086 == pci::ReadVendorId(pci::devices[i])) {
+        intel_ehc_exist = true;
+        break;
+      }
+    }
+    if (!intel_ehc_exist) {
+      return;
+    }
+
+    uint32_t superspeed_ports = pci::ReadConfReg(xhc_dev, 0xdc); // USB3PRM
+    pci::WriteConfReg(xhc_dev, 0xd8, superspeed_ports); // USB3_PSSEN
+    uint32_t ehci2xhci_ports = pci::ReadConfReg(xhc_dev, 0xd4); // XUSB2PRM
+    pci::WriteConfReg(xhc_dev, 0xd0, ehci2xhci_ports); // XUSB2PR
+    Log(kDebug, "SwitchEhci2Xhci: SS = %02, xHCI = %02x\n",
+        superspeed_ports, ehci2xhci_ports);
+  }
 }
 
 namespace usb::xhci {
@@ -503,5 +526,106 @@ namespace usb::xhci {
     xhc.PrimaryEventRing()->Pop();
 
     return err;
+  }
+
+  Controller* controller;
+
+  void Initialize() {
+    // Intel 製を優先して xHC を探す
+    pci::Device* xhc_dev = nullptr;
+    for (int i = 0; i < pci::num_device; ++i) {
+      /** xHC の探索(0x0cu, 0x03u, x0x30u) 
+       * 0x0cu : シリアルバスのコントローラ全体
+       * 0x03u : USBコントローラ
+       * 0x30u : xHCI
+       */
+      if (pci::devices[i].class_code.Match(0x0cu, 0x03u, 0x30u)) {
+        xhc_dev = &pci::devices[i];
+
+        if (0x8086 == pci::ReadVendorId(*xhc_dev)) {
+          break;
+        }
+      }
+    }
+
+    if (xhc_dev) {
+      Log(kInfo, "xHC has been found: %d.%d.%d\n",
+          xhc_dev->bus, xhc_dev->device, xhc_dev->function);
+    } else {
+      Log(kError, "xHC has not been found\n");
+      exit(1);
+    }
+
+    /** 0xfee00020の31:24を読み取ってそのプログラムが動作しているLocal APIC ID を取得する
+     * この時点では最初に起動する BSP のみしか動いていないため，BSP の Local APIC ID が取得される
+     */
+    const uint8_t bsp_local_apic_id =
+      *reinterpret_cast<const uint32_t*>(0xfee00020) >> 24;
+
+    /** xHCに対してMSI割り込みを有効化する
+     * 第2引数: Destination ID フィールド
+     * 第5引数: Vector フィールド
+     */
+    pci::ConfigureMSIFixedDestination(
+        *xhc_dev, bsp_local_apic_id,
+        pci::MSITriggerMode::kLevel, pci::MSIDeliveryMode::kFixed,
+        InterruptVector::kXHCI, 0);
+
+    /** xCHIの仕様ではxCHを制御するレジスタ群はMMIOである． 
+     * そのため，MMIOという，メモリと同じように読み書きするメモリアドレスが付与されているレジスタを見る．
+     * メモリアドレス空間のどこにあるのかは機種で異なる
+     * 一方でMMIOアドレスのほうはBAR0空間に記録されているのでその値を読み取って扱う
+     */
+    const WithError<uint64_t> xhc_bar = pci::ReadBar(*xhc_dev, 0);
+    Log(kDebug, "ReadBar: %s\n", xhc_bar.error.Name());
+    /** ~はNOT演算で，64bitなので詳しく書けば0xfは0x0000000fである
+     * !(0x0000000f) = 0xfffffff0 である
+     * fを複数個羅列するのは個数を数えるのが面倒なうえ，
+     * やりたいことはAND演算による下位4ビットの抽出であるので
+     * 以下の書き方としている
+     */
+    const uint64_t xhc_mmio_base = xhc_bar.value & ~static_cast<uint64_t>(0xf);
+    Log(kDebug, "xHC mmio_base = %08lx\n", xhc_mmio_base);
+
+    /* BAR0の値を使ってxHCを初期化する */
+    usb::xhci::controller = new Controller{xhc_mmio_base};//xHCIのコントローラインスタンスの生成
+    Controller& xhc = *usb::xhci::controller;
+    /** Intel製の場合USB2.0用のEHCIと3.0用のXHCIが両方搭載されており，
+     * 初期状態ではEHCIをであるので，XHCIで制御できるようにしている
+     */
+
+    if (0x8086 == pci::ReadVendorId(*xhc_dev)) {
+      SwitchEhci2Xhci(*xhc_dev);
+    }
+    if (auto err = xhc.Initialize()) {
+      Log(kError, "xhc initialize failed: %s\n", err.Name());
+      exit(1);
+    }
+
+    Log(kInfo, "xHC starting\n");
+    xhc.Run();
+    /* xHC群の各ポートを調べる */
+    for (int i = 1; i <= xhc.MaxPorts(); ++i) {
+      auto port = xhc.PortAt(i);
+      Log(kDebug, "Port %d: IsConnected=%d\n", i, port.IsConnected());
+      /* ポートに何らかの機器が接続されている */
+      if (port.IsConnected()) {
+        /* USB マウスが接続されていた場合，USB マウス用のクラスドライバに登録する */
+        if (auto err = ConfigurePort(xhc, port)) {
+          Log(kError, "failed to configure port: %s at %s:%d\n",
+              err.Name(), err.File(), err.Line());
+          continue;
+        }
+      }
+    }
+  }
+
+  void ProcessEvents() {
+    while (controller->PrimaryEventRing()->HasFront()) {
+      if (auto err = ProcessEvent(*controller)) {
+        Log(kError, "Error while ProcessEvent: %s at %s:%d\n",
+            err.Name(), err.File(), err.Line());
+      }
+    }
   }
 }

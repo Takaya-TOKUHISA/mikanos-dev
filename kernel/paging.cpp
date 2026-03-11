@@ -30,3 +30,7 @@ void SetupIdentityPageTable() {
     /* CR3 レジスタにPML4テーブルの物理アドレスを書き込み，自分の多段ページング構造を利用する */
     SetCR3(reinterpret_cast<uint64_t>(&pml4_table[0]));
 }
+
+void InitializePaging() {
+    SetupIdentityPageTable();
+}

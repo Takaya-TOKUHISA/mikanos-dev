@@ -8,8 +8,10 @@
 
 #include <array>
 #include <cstdint>
+#include <deque>
 
 #include "x86_descriptor.hpp"
+#include "message.hpp"
 
 /* __attribute__((packed))はパディングの阻止
  * 勝手にパディングされてしまうとハード側のデータ構造との齟齬が生まれる
@@ -71,3 +73,5 @@ struct InterruptFrame {
 };
 
 void NotifyEndOfInterrupt();
+
+void InitializeInterrupt(std::deque<Message>* msg_queue);
