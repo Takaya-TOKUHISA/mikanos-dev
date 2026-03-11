@@ -29,6 +29,7 @@
 #include "window.hpp"
 #include "layer.hpp"
 #include "timer.hpp"
+#include "acpi.hpp"
 
 #include "message.hpp"
 
@@ -65,7 +66,7 @@ alignas(16) uint8_t kernel_main_stack[1024 * 1024];
  * 引数で渡された二つのデータ構造をスタック領域のコピーしておくために二行追加
  */
 extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_ref,
-                           const MemoryMap& memory_map_ref) {
+                           const MemoryMap& memory_map_ref, const acpi::RSDP& acpi_table) {
     MemoryMap memory_map{memory_map_ref}; 
 
     InitializeGraphics(frame_buffer_config_ref);
@@ -89,6 +90,7 @@ extern "C" void KernelMainNewStack(const FrameBufferConfig& frame_buffer_config_
     InitializeMouse();
     layer_manager->Draw({{0, 0}, ScreenSize()});
 
+    acpi::Initialize(acpi_table);
     InitializeLAPICTimer(*main_queue);
 
     timer_manager->AddTimer(Timer(200, 2));

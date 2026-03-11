@@ -276,7 +276,7 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
         root_dir, &kernel_file, L"\\kernel.elf",
         EFI_FILE_MODE_READ, 0);
     if(EFI_ERROR(status)){
-        Print(L"failed to open file '\\kernel/elf': %r\n", status);
+        Print(L"failed to open file '\\kernel.elf': %r\n", status);
         Halt();
     }
     
@@ -374,10 +374,20 @@ EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image_handle,
             Halt();
     }
 
+    VOID* acpi_table = NULL;
+    for (UINTN i = 0; i < system_table->NumberOfTableEntries; ++i) {
+        if (CompareGuid(&gEfiAcpiTableGuid,
+                        &system_table->ConfigurationTable[i].VendorGuid)) {
+            acpi_table = system_table->ConfigurationTable[i].VendorTable;
+            break;
+        }
+    }
+
     typedef void EntryPointType(const struct FrameBufferConfig*,
-                                const struct MemoryMap*);
+                                const struct MemoryMap*,
+                                const VOID*);
     EntryPointType* entry_point = (EntryPointType*)entry_addr; //そのような関数を指すポインタentry_pointにentry_addrを格納．
-    entry_point(&config, &memmap); //entry_pointを呼び出し(entry_addrから実行)．
+    entry_point(&config, &memmap, acpi_table); //entry_pointを呼び出し(entry_addrから実行)．
 
     Print(L"All done\n");
 
