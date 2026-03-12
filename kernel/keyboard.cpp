@@ -2,7 +2,6 @@
 
 #include <memory>
 #include "usb/classdriver/keyboard.hpp"
-#include "error.hpp"
 
 namespace {
 
