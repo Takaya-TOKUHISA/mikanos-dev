@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <queue>
 #include <vector>
+#include <limits>
 #include "message.hpp"
 
 void InitializeLAPICTimer(std::deque<Message>& msg_queue);
@@ -29,7 +30,7 @@ class TimerManager {
     public:
         TimerManager(std::deque<Message>& msg_queue);
         void AddTimer(const Timer& timer);
-        void Tick();
+        bool Tick();
         unsigned long CurrentTick() const { return tick_; }
 
     private:
@@ -41,5 +42,8 @@ class TimerManager {
 extern TimerManager* timer_manager;
 extern unsigned long lapic_timer_freq;
 const int kTimerFreq = 100;
+
+const int kTaskTimerPeriod = static_cast<int>(kTimerFreq * 0.02);
+const int kTaskTimerValue = std::numeric_limits<int>::min();
 
 void LAPICTimerOnInterrupt();
