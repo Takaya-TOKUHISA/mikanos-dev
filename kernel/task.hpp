@@ -7,7 +7,9 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 /* タスクのコンテキストを記録するために必要なレジスタ */
 struct TaskContext {
@@ -18,7 +20,34 @@ struct TaskContext {
     std::array<uint8_t, 512> fxsave_area; // offset 0xco
 } __attribute__((packed));
 
-extern TaskContext task_b_ctx, task_a_ctx;
+using TaskFunc = void (uint64_t, int64_t);
 
-void SwitchTask();
+class Task {
+    public:
+        static const size_t kDefaultStackBytes = 4096;
+
+        Task(uint64_t id);
+        Task& InitContext(TaskFunc* f, int64_t data);
+        TaskContext& Context();
+
+    private:
+        uint64_t id_;
+        std::vector<uint64_t> stack_;
+        alignas(16) TaskContext context_;
+};
+
+class TaskManager {
+    public:
+        TaskManager();
+        Task& NewTask();
+        void SwitchTask();
+
+    private:
+        std::vector<std::unique_ptr<Task>> tasks_{};
+        uint64_t latest_id_{0};
+        size_t current_task_index_{0};
+};
+
+extern TaskManager* task_manager;
+
 void InitializeTask();
