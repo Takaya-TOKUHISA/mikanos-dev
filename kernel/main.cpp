@@ -195,8 +195,6 @@ extern "C" void KernelMainNewStack(
         .InitContext(TaskB, 45)
         .Wakeup()
         .ID();
-    task_manager->NewTask().InitContext(TaskIdle, 0xdeadbeef).Wakeup();
-    task_manager->NewTask().InitContext(TaskIdle, 0xcafebabe).Wakeup();
 
     usb::xhci::Initialize();
     InitializeKeyboard();
