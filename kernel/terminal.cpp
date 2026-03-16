@@ -1,5 +1,7 @@
 #include "terminal.hpp"
 
+#include <cstring>
+
 #include "font.hpp"
 #include "layer.hpp"
 
@@ -18,6 +20,8 @@ Terminal::Terminal() {
         .SetWindow(window_)
         .SetDraggable(true)
         .ID();
+
+    Print(">");
 }
 
 /* カーソルの点滅 */
@@ -34,11 +38,13 @@ void Terminal::DrawCursor(bool visible) {
     FillRectangle(*window_->Writer(), CalcCursorPos(), {2, 15}, color);
 }
 
+/* 次の描画位置の計算 */
 Vector2D<int> Terminal::CalcCursorPos() const {
     return ToplevelWindow::kTopLeftMargin +
         Vector2D<int>{4 + 8 * cursor_.x, 4 + 16 * cursor_.y};
 }
 
+/* 文字入力の識別 */
 Rectangle<int> Terminal::InputKey(
         uint8_t modifier, uint8_t keycode, char ascii) {
     DrawCursor(false);
@@ -49,12 +55,13 @@ Rectangle<int> Terminal::InputKey(
         linebuf_[linebuf_index_] = 0;
         linebuf_index_ = 0;
         cursor_.x = 0;
-        Log(kWarn, "line: %s\n", &linebuf_[0]);
         if (cursor_.y < kRows - 1){
             ++cursor_.y;
         } else {
             Scroll1();
         }
+        ExecuteLine();
+        Print(">");
         draw_area.pos = ToplevelWindow::kTopLeftMargin;
         draw_area.size = window_->InnerSize();
     } else if (ascii == '\b') {
@@ -89,6 +96,57 @@ void Terminal::Scroll1() {
     window_->Move(ToplevelWindow::kTopLeftMargin + Vector2D<int>{4, 4}, move_src);
     FillRectangle(*window_->InnerWriter(),
                   {4, 4 + 16*cursor_.y}, {8*kColumns, 16}, {0, 0, 0});
+}
+
+void Terminal::ExecuteLine() {
+    char* command = &linebuf_[0];
+    char* first_arg = strchr(&linebuf_[0], ' ');
+    if (first_arg) {
+        *first_arg = 0;
+        ++first_arg;
+    }
+
+    if (strcmp(command, "echo") == 0) {
+        if (first_arg) {
+            Print(first_arg);
+        }
+        Print("\n");
+    } else if (command[0] != 0) {
+        Print("no such command: ");
+        Print(command);
+        Print("\n");
+    }
+}
+
+void Terminal::Print(const char* s) {
+    DrawCursor(false);
+
+    /* ラムダ式として改行を検知して実際に処理する */
+    auto newline = [this]() {
+        cursor_.x = 0;
+        if (cursor_.y < kRows - 1) {
+            ++cursor_.y;
+        } else {
+            Scroll1();
+        }
+    };
+
+    while (*s) {
+        if (*s == '\n') {
+            newline();
+        } else {
+            WriteAscii(*window_->Writer(), CalcCursorPos(), *s, {255, 255, 255});
+            if (cursor_.x == kColumns - 1) {
+                newline();
+            } else {
+                ++cursor_.x;
+            }
+        }
+
+        ++s;
+    }
+
+    DrawCursor(true);
 }
 
 /* ターミナル専用タスク */
