@@ -100,21 +100,29 @@ void Terminal::Scroll1() {
 
 void Terminal::ExecuteLine() {
     char* command = &linebuf_[0];
-    char* first_arg = strchr(&linebuf_[0], ' ');
-    if (first_arg) {
-        *first_arg = 0;
-        ++first_arg;
-    }
-
-    if (strcmp(command, "echo") == 0) {
-        if (first_arg) {
-            Print(first_arg);
+    while(command) {
+        while(*command == ' ') ++command;
+        char* next = command ? strchr(command, ';') : nullptr;
+        if (next) {
+            *next = 0;
+            ++next;
         }
-        Print("\n");
-    } else if (command[0] != 0) {
-        Print("no such command: ");
-        Print(command);
-        Print("\n");
+        char* first_arg = strchr(command, ' ');
+        if (first_arg) {
+            *first_arg = 0;
+            ++first_arg;
+        }
+        if (strcmp(command, "echo") == 0) {
+            if (first_arg) {
+                Print(first_arg);
+            }
+            Print("\n");
+        } else if (command[0] != 0) {
+            Print("no such command: ");
+            Print(command);
+            Print("\n");
+        }
+        command = next;
     }
 }
 
