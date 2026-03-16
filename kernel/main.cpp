@@ -73,7 +73,7 @@ void InitializeTextWindow() {
     text_window_layer_id = layer_manager->NewLayer()
         .SetWindow(text_window)
         .SetDraggable(true)
-        .Move({500, 200})
+        .Move({500, 100})
         .ID();
 
     layer_manager->UpDown(text_window_layer_id, std::numeric_limits<int>::max());
@@ -271,9 +271,18 @@ extern "C" void KernelMainNewStack(
                         printk("wakeup TaskB: %s\n", task_manager->Wakeup(taskb_id).Name());
                     }
                 } else {
-                    printk("key push not handled: keycode %02x, ascii %02x\n",
-                        msg->arg.keyboard.keycode,
-                        msg->arg.keyboard.ascii);
+                    __asm__("cli");
+                    auto task_it = layer_task_map->find(act);
+                    __asm__("sti");
+                    if (task_it != layer_task_map->end()) {
+                        __asm__("cli");
+                        task_manager->SendMessage(task_it->second, *msg);
+                        __asm__("sti");
+                    } else {
+                        printk("key push not handled: keycode %02x, ascii %02x\n",
+                            msg->arg.keyboard.keycode,
+                            msg->arg.keyboard.ascii);
+                    }
                 }
                 break;
             case Message::kLayer:
