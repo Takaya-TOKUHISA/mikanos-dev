@@ -68,23 +68,24 @@ void BitmapMemoryManager::SetBit(FrameID frame, bool allocated) {
 extern "C" caddr_t program_break, program_break_end;
 
 namespace {
-  char memory_manager_buf[sizeof(BitmapMemoryManager)];
-  BitmapMemoryManager* memory_manager;
-  /* プログラムブレークの初期値を設定する */
-  Error InitializeHeap(BitmapMemoryManager& memory_manager) {
-    /* 一旦ヒープ領域として128MiB用意する */
-    const int kHeapFrames = 64 * 512;
-    /* フレーム確保 */
-    const auto heap_start = memory_manager.Allocate(kHeapFrames);
-    if (heap_start.error) {
-      return heap_start.error;
-    }
+    char memory_manager_buf[sizeof(BitmapMemoryManager)];
+    /* プログラムブレークの初期値を設定する */
+    Error InitializeHeap(BitmapMemoryManager& memory_manager) {
+        /* 一旦ヒープ領域として128MiB用意する */
+        const int kHeapFrames = 64 * 512;
+        /* フレーム確保 */
+        const auto heap_start = memory_manager.Allocate(kHeapFrames);
+        if (heap_start.error) {
+            return heap_start.error;
+        }
 
-    program_break = reinterpret_cast<caddr_t>(heap_start.value.ID() * kBytesPerFrame);
-    program_break_end = program_break + kHeapFrames * kBytesPerFrame;
-    return MAKE_ERROR(Error::kSuccess);
-  }
+        program_break = reinterpret_cast<caddr_t>(heap_start.value.ID() * kBytesPerFrame);
+        program_break_end = program_break + kHeapFrames * kBytesPerFrame;
+        return MAKE_ERROR(Error::kSuccess);
+    }
 }
+
+BitmapMemoryManager* memory_manager;
 
 void InitializeMemoryManager(const MemoryMap& memory_map) {
     ::memory_manager = new(memory_manager_buf) BitmapMemoryManager;
