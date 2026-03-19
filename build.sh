@@ -1,5 +1,7 @@
 #!/bin/sh -eu
 
+source $HOME/osbook/devenv/build.sh
+
 make ${MAKE_OPTS:-} -C kernel kernel.elf
 
 for MK in $(ls apps/*/Makefile)
