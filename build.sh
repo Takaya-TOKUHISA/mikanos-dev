@@ -1,6 +1,6 @@
 #!/bin/sh -eu
 
-source $HOME/osbook/devenv/build.sh
+. $HOME/osbook/devenv/buildenv.sh
 
 make ${MAKE_OPTS:-} -C kernel kernel.elf
 
