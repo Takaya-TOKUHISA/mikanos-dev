@@ -91,33 +91,14 @@ Task& TaskManager::NewTask() {
     return *tasks_.emplace_back(new Task{latest_id_});
 }
 
-/** 実行していたタスクの情報を取得して，
- * 現在そのタスクにスリープ命令があるなら pop_front で取り出した後
- * push_back してランニングキューの末尾に追加せずにコンテキストの切り替えを行う
- */
-void TaskManager::SwitchTask(bool current_sleep) {
-    auto& level_queue = running_[current_level_];
-    Task* current_task = level_queue.front();
-    level_queue.pop_front();
-    if (!current_sleep) {
-        level_queue.push_back(current_task);
+void TaskManager::SwitchTask(const TaskContext& current_ctx){
+    TaskContext& task_ctx = task_manager->CurrentTask().Context(); // 割り込み時の現在のタスクのコンテキストの参照を取得する
+    memcpy(&task_ctx, &current_ctx, sizeof(TaskContext));          // 割り込み時に退避したcurrent_ctxをtask_ctxに記録する
+    Task* current_task = RotateCurrentRunQueue(false);             // 現在のタスクをキューの末尾に追加し，それをcurrent_ctxに記録する
+    // 次に実行するべきタスクがこれまでと一緒じゃないならコンテキストの切り替えを行う
+    if (&CurrentTask() != current_task) {
+        RestoreContext(&CurrentTask().Context());
     }
-    if (level_queue.empty()) {
-        level_changed_ = true;
-    }
-
-    if (level_changed_) {
-        level_changed_ = false;
-        for (int lv = kMaxLevel; lv >= 0; --lv) {
-            if (!running_[lv].empty()) {
-                current_level_ = lv;
-                break;
-            }
-        }
-    }
-    Task* next_task = running_[current_level_].front();
-
-    SwitchContext(&next_task->Context(), &current_task->Context());
 }
 
 
@@ -133,7 +114,8 @@ void TaskManager::Sleep(Task* task) {
     task->SetRunning(false);
 
     if (task == running_[current_level_].front()){
-        SwitchTask(true);
+        Task* current_task = RotateCurrentRunQueue(true); // trueでsleep有効化
+        SwitchContext(&CurrentTask().Context(), &current_task->Context());
         return;
     }
 
@@ -221,6 +203,30 @@ void TaskManager::ChangeLevelRunning(Task* task, int level) {
         current_level_ = level;
         level_changed_ = true;
     }
+}
+
+Task* TaskManager::RotateCurrentRunQueue(bool current_sleep) {
+    auto& level_queue = running_[current_level_];
+    Task* current_task = level_queue.front();
+    level_queue.pop_front();
+    if (!current_sleep) {
+        level_queue.push_back(current_task);
+    }
+    if (level_queue.empty()) {
+        level_changed_ = true;
+    }
+
+    if (level_changed_) {
+        level_changed_ = false;
+        for (int lv = kMaxLevel; lv >= 0; --lv) {
+            if (!running_[lv].empty()) {
+                current_level_ = lv;
+                break;
+            }
+        }
+    }
+
+    return current_task;
 }
 
 TaskManager* task_manager;

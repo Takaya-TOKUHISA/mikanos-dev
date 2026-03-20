@@ -43,6 +43,8 @@ void SetDataSegment(SegmentDescriptor& desc,
 const uint16_t kKernelCS = 1 << 3;
 const uint16_t kKernelSS = 2 << 3;
 const uint16_t kKernelDS = 0;
+const uint16_t kTSS = 5 << 3; // TSS は GDT[5] に配置する
 
 void SetupSegments();
 void InitializeSegmentation();
+void InitializeTSS();
