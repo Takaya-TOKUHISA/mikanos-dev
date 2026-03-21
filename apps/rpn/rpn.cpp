@@ -18,9 +18,10 @@ void Push(long value) {
     stack[stack_ptr] = value;
 }
 
+extern "C" void SyscallExit(int exit_code);
 
 /* 逆ポーランド記法で書かれた数式を計算する電卓機能 */
-extern "C" int main(int argc, char** argv) {
+extern "C" void main(int argc, char** argv) {
     stack_ptr = -1;
 
     for (int i = 1; i < argc; ++i) {
@@ -52,6 +53,6 @@ extern "C" int main(int argc, char** argv) {
     }
 
     printf("%ld\n", result);
-    while(1);
+    SyscallExit(static_cast<int>(result));
     //return static_cast<int>(Pop());
 }
