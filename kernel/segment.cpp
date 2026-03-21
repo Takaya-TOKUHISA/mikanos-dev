@@ -14,6 +14,20 @@ namespace {
     std::array<uint32_t, 26> tss; // TSSに利用するための108バイト領域
 
     static_assert((kTSS >> 3) + 1 < gdt.size());
+
+    void SetTSS(int index, uint64_t value) {
+        tss[index]      = value & 0xffffffff;
+        tss[index + 1]  = value >> 32;
+    }
+
+    uint64_t AllocateStackArea(int num_4kframes) {
+        auto [ stk, err ] = memory_manager->Allocate(num_4kframes);
+        if (err) {
+            Log(kError, "failed to allocate stack area: %s\n", err.Name());
+            exit(1);
+        }
+        return reinterpret_cast<uint64_t>(stk.Frame()) + num_4kframes * 4096;
+    }
 }
 
 void SetCodeSegment(SegmentDescriptor& desc,
@@ -82,18 +96,8 @@ void InitializeSegmentation() {
 }
 
 void InitializeTSS() {
-    const int kRSP0Frames = 8; // RSP0に設定するスタック領域の大きさ
-    auto [ stack0, err ] = memory_manager->Allocate(kRSP0Frames); //確保 上位4バイトは不使用で4バイト目からRSP0が始まる
-    if (err) {
-        Log(kError, "failed to allocate rsp0: %s\n", err.Name());
-        exit(1);
-    }
-    /* スタック領域の末尾を計算し，rsp0に書き込む */
-    uint64_t rsp0 =
-        reinterpret_cast<uint64_t>(stack0.Frame()) + kRSP0Frames * 4096;
-    /* tssに32ビットずつでRSP0の上位と下位のビット(スタック末尾アドレス)を記録する */
-    tss[1] = rsp0 & 0xffffffff;
-    tss[2] = rsp0 >> 32;
+    SetTSS(1, AllocateStackArea(8));                    // RSP0を確保
+    SetTSS(7 + 2 * kISTForTimer, AllocateStackArea(8)); // IST1としてタイマの割り込みハンドラ実行時に自動で切り替わるためのスタック領域を確保
 
     uint64_t tss_addr = reinterpret_cast<uint64_t>(&tss[0]);
     /* GDT[5] を設定する関数 */
