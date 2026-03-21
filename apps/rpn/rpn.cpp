@@ -1,8 +1,7 @@
 #include <cstring>
 #include <cstdlib>
-
 #include <cstdio>
-
+#include "../syscall.h"
 
 int stack_ptr;
 long stack[100];
@@ -17,8 +16,6 @@ void Push(long value) {
     ++stack_ptr;
     stack[stack_ptr] = value;
 }
-
-extern "C" void SyscallExit(int exit_code);
 
 /* 逆ポーランド記法で書かれた数式を計算する電卓機能 */
 extern "C" void main(int argc, char** argv) {
