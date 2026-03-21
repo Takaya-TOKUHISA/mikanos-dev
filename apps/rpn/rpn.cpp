@@ -1,8 +1,7 @@
 #include <cstring>
 #include <cstdlib>
-#include <cstdint>
 
-#include "../../kernel/logger.hpp"
+#include <cstdio>
 
 
 int stack_ptr;
@@ -19,7 +18,6 @@ void Push(long value) {
     stack[stack_ptr] = value;
 }
 
-extern "C" int64_t SyscallLogString(LogLevel, const char*);
 
 /* 逆ポーランド記法で書かれた数式を計算する電卓機能 */
 extern "C" int main(int argc, char** argv) {
@@ -30,33 +28,30 @@ extern "C" int main(int argc, char** argv) {
             long b = Pop();
             long a = Pop();
             Push(a + b);
-            SyscallLogString(kWarn, "+");
         }  else if (strcmp(argv[i], "-") == 0) {
             long b = Pop();
             long a = Pop();
             Push(a - b);
-            SyscallLogString(kWarn, "-");
         } else if (strcmp(argv[i], "*") == 0) {
             long b = Pop();
             long a = Pop();
             Push(a * b);
-            SyscallLogString(kWarn, "*");
         } else if (strcmp(argv[i], "/") == 0) {
             long b = Pop();
             long a = Pop();
             Push(a / b);
-            SyscallLogString(kWarn, "/");
         } else {
             long a = atol(argv[i]);
             Push(a);
-            SyscallLogString(kWarn, "#");
         }
     }
 
-    if (stack_ptr < 0) {
-        return 0;
+    long result = 0;
+    if (stack_ptr >= 0) {
+        result = Pop();
     }
-    SyscallLogString(kWarn, "\nhello, this is rpn\n");
+
+    printf("%ld\n", result);
     while(1);
     //return static_cast<int>(Pop());
 }
