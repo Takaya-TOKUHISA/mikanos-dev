@@ -4,6 +4,5 @@
 char table[3 * 1024 * 1024];
 
 extern "C" void main(int argc, char** argv) {
-
-  SyscallExit(argv[1]?atoi(argv[1]):0);
+  exit(argv[1]?atoi(argv[1]):0);
 }
