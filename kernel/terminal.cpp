@@ -469,10 +469,7 @@ Error Terminal::ExecuteFile(const fat::DirectoryEntry& file_entry, char* command
     auto elf_header = reinterpret_cast<Elf64_Ehdr*>(&file_buf[0]);
     /* ELF 形式でないなら引数なしで関数呼び出し */
     if (memcmp(elf_header->e_ident, "\x7f" "ELF", 4) != 0) {
-        using Func = void();
-        auto f = reinterpret_cast<Func*>(&file_buf[0]);
-        f();
-        return MAKE_ERROR(Error::kSuccess);
+        return MAKE_ERROR(Error::kInvalidFile);
     }
 
     __asm__("cli");
@@ -615,7 +612,7 @@ std::map<uint64_t, Terminal*>* terminals;
 void TaskTerminal(uint64_t task_id, int64_t data) {
     const char* command_line = reinterpret_cast<char*>(data);
     const bool show_window = command_line == nullptr;
-    
+
     __asm__("cli");
     Task& task = task_manager->CurrentTask();
     Terminal* terminal = new Terminal{task_id, show_window};
