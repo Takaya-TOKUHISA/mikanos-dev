@@ -27,10 +27,13 @@ void SetupIdentityPageTable() {
             page_directory[i_pdpt][i_pd] = i_pdpt * kPageSize1G + i_pd * kPageSize2M | 0x083;
         }
     }
-    /* CR3 レジスタにPML4テーブルの物理アドレスを書き込み，自分の多段ページング構造を利用する */
-    SetCR3(reinterpret_cast<uint64_t>(&pml4_table[0]));
+    ResetCR3();
 }
 
 void InitializePaging() {
     SetupIdentityPageTable();
+}
+
+void ResetCR3() {
+    SetCR3(reinterpret_cast<uint64_t>(&pml4_table[0]));
 }

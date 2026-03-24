@@ -15,6 +15,7 @@
 
 #include "error.hpp"
 #include "message.hpp"
+#include "paging.hpp"
 
 /* タスクのコンテキストを記録するために必要なレジスタ */
 struct TaskContext {
