@@ -137,4 +137,16 @@ namespace fat {
      * @return 読み込んだバイト数
      */
     size_t LoadFile(void* buf, size_t len, const DirectoryEntry& entry);
+
+    class FileDescriptor {
+        public:
+            explicit FileDescriptor(DirectoryEntry& fat_entry);
+            size_t Read(void* buf, size_t len);
+
+        private:
+            DirectoryEntry& fat_entry_;     // fdに対応するファイルへの参照
+            size_t rd_off_ = 0;             // ファイル先頭からの読み込みオフセット
+            unsigned long rd_cluster_ = 0;  // rd_off_に対応するクラスタ番号
+            size_t rd_cluster_off_ = 0;     // クラスタ先頭からのオフセット
+    };
 }
