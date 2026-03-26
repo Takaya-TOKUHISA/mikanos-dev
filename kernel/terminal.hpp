@@ -53,3 +53,14 @@ class Terminal {
 
 extern std::map<uint64_t, Terminal*>* terminals;
 void TaskTerminal(uint64_t task_id, int64_t data);
+
+/* file.hppからの継承を用いてターミナルのキーボード入力をファイルに見せかける */
+class TerminalFileDescriptor : public FileDescriptor {
+    public:
+        explicit TerminalFileDescriptor(Task& task, Terminal& term);
+        size_t Read(void* buf, size_t len) override;
+
+    private:
+        Task& task_;
+        Terminal& term_;
+};

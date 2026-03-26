@@ -168,7 +168,7 @@ namespace fat {
         len = std::min(len, fat_entry_.file_size - rd_off_);
 
         size_t total = 0;
-        /* にファイル全体を読み終わるまでクラスタごとにチェーンをたどって書き出し続ける */
+        /* にファイル全体を読み終わるまでクラスタごとにチェーンをたどってbufに書き出し続ける */
         while (total < len) {
             uint8_t* sec = GetSectorByCluster<uint8_t>(rd_cluster_);
             size_t n = std::min(len - total, bytes_per_cluster - rd_cluster_off_);

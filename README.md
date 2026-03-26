@@ -490,3 +490,9 @@
 This project is based on the book:
 - **"ゼロからのOS自作入門" (MikanOS)** by [Kouta Uchida (uchan-nos)](https://github.com/uchan-nos/mikanos)
 - Some build tools and scripts are derived from [osbook/devenv](https://github.com/uchan-nos/mikanos-build).
+
+## License and Attribution
+- This repository is a personal transcription/reimplementation for learning, based on MikanOS.
+- Some files may include direct copies or modifications derived from the upstream project.
+- This repository is distributed under Apache License 2.0. See `LICENSE` for details.
+- If you redistribute modified files, keep upstream attribution and clearly indicate your changes.

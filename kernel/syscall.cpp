@@ -300,7 +300,7 @@ SYSCALL(CreateTimer) {
 }
 
 namespace {
-    /* 空きfdの探索 */
+    /* 空きfdの探索　　　　　　　　　　　　　　　　　　　　　　 */
     size_t AllocateFD(Task& task) {
         const size_t num_files = task.Files().size();
         for (size_t i = 0; i < num_files; ++i) {
@@ -319,6 +319,10 @@ SYSCALL(OpenFile) {
     __asm__("cli");
     auto& task = task_manager->CurrentTask();
     __asm__("sti");
+
+    if (strcmp(path, "@stdin") == 0) {
+        return { 0, 0 };
+    }
     /* 現状ファイル書き込み機能はないためエラーとする */
     if ((flags & O_ACCMODE) == O_WRONLY) {
         return { 0, EINVAL };
