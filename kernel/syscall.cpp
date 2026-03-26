@@ -47,12 +47,15 @@ SYSCALL(PutString) {
         return { 0, E2BIG };
     }
 
-    if (fd == 1) {
-        const auto task_id = task_manager->CurrentTask().ID();
-        (*terminals)[task_id]->Print(s, len);
-        return { len, 0 };
+    __asm__("cli");
+    auto& task = task_manager->CurrentTask();
+    __asm__("sti");
+
+    /* fdに基づいて出力を行う */
+    if (fd < 0 || task.Files().size() <= fd || !task.Files()[fd]) {
+        return { 0, EBADF };
     }
-    return { 0, EBADF };
+    return { task.Files()[fd]->Write(s, len), 0};
 }
 
 SYSCALL(Exit) {
