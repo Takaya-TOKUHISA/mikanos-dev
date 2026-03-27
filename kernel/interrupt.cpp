@@ -76,6 +76,22 @@ void KillApp(InterruptFrame* frame) {
     __asm__("sti");
     ExitApp(task.OSStackPointer(), 128 + SIGSEGV);
 }
+
+/* ペエジフォールトが起きたらハンドラを呼び出してデマンドページングを行う */
+__attribute__((interrupt))
+void IntHandlerPF(InterruptFrame* frame, uint64_t error_code) {
+    uint64_t cr2 = GetCR2(); // 原因となるメモリアドレスが書き込まれる
+    /* error_codeには例外の理由が書き込まれるため，cr2と組み合わせて原因を特定する */
+    if (auto err = HandlePageFault(error_code, cr2); !err) {
+        return;
+    }
+    KillApp(frame);
+    PrintFrame(frame, "#PF");
+    WriteString(*screen_writer, {500, 16*4}, "ERR", {0, 0, 0});
+    PrintHex(error_code, 16, {500 + 8*4, 16*4});
+    while (true) __asm__("hlt");
+}
+
 #define FaultHandlerWithError(fault_name) \
     __attribute__((interrupt)) \
     void IntHandler ## fault_name (InterruptFrame* frame, uint64_t error_code) { \
@@ -106,7 +122,7 @@ void KillApp(InterruptFrame* frame) {
     FaultHandlerWithError(NP)
     FaultHandlerWithError(SS)
     FaultHandlerWithError(GP) // 一般保護例外
-    FaultHandlerWithError(PF) // ページフォールト
+
     FaultHandlerNoError(MF)
     FaultHandlerWithError(AC)
     FaultHandlerNoError(MC)
