@@ -94,7 +94,11 @@ namespace {
             last_addr = std::max(last_addr, phdr[i].p_vaddr + phdr[i].p_memsz);
             const auto num_4kpages = (phdr[i].p_memsz + 4095) / 4096;
             
-            if (auto err = SetupPageMaps(dest_addr, num_4kpages)) {
+            // setup pagemaps as readonly (writable = false)
+            /** WP:0で，スーパーバイザーモードで動いていればwritableにかかわらずページ書き込みを行える．
+             * 下でmemcpyするため，WP:0に設定しておく必要がある
+             */
+            if (auto err = SetupPageMaps(dest_addr, num_4kpages, false)) {
                 return { last_addr, err };
             }
 
@@ -168,7 +172,54 @@ namespace {
             dir_cluster = fat::NextCluster(dir_cluster);
         }
     }
+    WithError<AppLoadInfo> LoadApp(fat::DirectoryEntry& file_entry, Task& task) {
+        PageMapEntry* temp_pml4;
+        /* OS用の設定だけがあるまっさらなPML4テーブルを生成し，CR3に設定する */
+        if (auto [ pml4, err ] = SetupPML4(task); err) {
+            return { {}, err };
+        } else {
+            temp_pml4 = pml4; // メモしておく
+        }
+
+        /** アプリが登録されているか(すでに一度以上起動されているか)調べる
+         * 登録されていれば以下の節を実行する
+         */
+        if (auto it = app_loads->find(&file_entry); it != app_loads->end()) {
+            AppLoadInfo app_load = it->second; // アプリ登録情報の取り出し
+            auto err = CopyPageMaps(temp_pml4, app_load.pml4, 4, 256); // アプリ領域をtemp_pml4にコピーする
+            app_load.pml4 = temp_pml4;
+            return { app_load, err };
+        }
+
+        std::vector<uint8_t> file_buf(file_entry.file_size);
+        fat::LoadFile(&file_buf[0], file_buf.size(), file_entry);
+
+        auto elf_header = reinterpret_cast<Elf64_Ehdr*>(&file_buf[0]);
+        if (memcmp(elf_header->e_ident, "\x7f" "ELF", 4) != 0) {
+            return { {}, MAKE_ERROR(Error::kInvalidFile) };
+        }
+
+        auto [ last_addr, err_load ] = LoadELF(elf_header);
+        if (err_load) {
+            return { {}, err_load };
+        }
+
+        AppLoadInfo app_load{last_addr, elf_header->e_entry, temp_pml4};
+        app_loads->insert(std::make_pair(&file_entry, app_load));
+
+        if (auto [ pml4, err ] = SetupPML4(task); err) {
+            return { app_load, err };
+        } else {
+            app_load.pml4 = pml4;
+        }
+        auto err = CopyPageMaps(app_load.pml4, temp_pml4, 4, 256);
+        return { app_load, err };
+    }
+
 }
+
+/* アプリの初回起動時に情報をメモしておき二回目はロード処理を省略して階層ページング構造のコピーを行ってアプリを起動する */
+std::map<fat::DirectoryEntry*, AppLoadInfo>* app_loads;
 
 /* コンストラクタ */
 Terminal::Terminal(uint64_t task_id, bool show_window)
@@ -398,28 +449,17 @@ void Terminal::ExecuteLine() {
 }
 
 Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry, char* command, char* first_arg) {
-    std::vector<uint8_t> file_buf(file_entry.file_size);
-    fat::LoadFile(&file_buf[0], file_buf.size(), file_entry);
-
-    auto elf_header = reinterpret_cast<Elf64_Ehdr*>(&file_buf[0]);
-    /* ELF 形式でないなら引数なしで関数呼び出し */
-    if (memcmp(elf_header->e_ident, "\x7f" "ELF", 4) != 0) {
-        return MAKE_ERROR(Error::kInvalidFile);
-    }
-
     __asm__("cli");
     auto& task = task_manager->CurrentTask();
     __asm__("sti");
 
-    if (auto pml4 = SetupPML4(task); pml4.error) {
-        return pml4.error;
+    /** アプリ起動
+     * 処理初回かそれ以降かでロード処理を実行するか変化する
+     */
+    auto [ app_load, err ] = LoadApp(file_entry, task);
+    if (err) {
+        return err;
     }
-
-    const auto [ elf_last_addr, elf_err ] = LoadELF(elf_header);
-    if (elf_err) {
-        return elf_err;
-    }
-
     /* argv をアプリ用ページ内に構築する */
     LinearAddress4Level args_frame_addr{0xffff'ffff'ffff'f000}; // 後半(アプリ)領域
     if (auto err = SetupPageMaps(args_frame_addr, 1)) {
@@ -448,7 +488,7 @@ Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry, char* command, char
 
     /* ページ単位になるよう切り上げてから範囲の設定 */
     const uint64_t elf_next_page =
-        (elf_last_addr + 4095) & 0xffff'ffff'ffff'f000;
+        (app_load.vaddr_end + 4095) & 0xffff'ffff'ffff'f000;
     task.SetDPagingBegin(elf_next_page);
     task.SetDPagingEnd(elf_next_page);
 
@@ -460,8 +500,7 @@ Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry, char* command, char
      */
     task.SetFileMapEnd(0xffff'ffff'ffff'e000);
 
-    auto entry_addr = elf_header->e_entry;
-    int ret = CallApp(argc.value, argv, 3 << 3 | 3, entry_addr,
+    int ret = CallApp(argc.value, argv, 3 << 3 | 3, app_load.entry,
                       stack_frame_addr.value + 4096 - 8,
                       &task.OSStackPointer());
     /* app 終了時に一度リセットして，ファイルが積み重なり続けるのを防ぐ */
@@ -473,8 +512,7 @@ Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry, char* command, char
     Print(s); 
     
 
-    const auto addr_first = GetFirstLoadAddress(elf_header);
-    if (auto err = CleanPageMaps(LinearAddress4Level{addr_first})) {
+    if (auto err = CleanPageMaps(LinearAddress4Level{0xffff'8000'0000'0000})) {
         return err;
     }
 
