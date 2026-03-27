@@ -29,6 +29,7 @@ mnt/
 
 *.data
 *.txt
+.*.un~
 
 /html
 /ipxe_root

@@ -128,27 +128,8 @@ namespace fat {
         return memcmp(entry.name, name83, sizeof(name83)) == 0;
     }
 
-    /* チェーンをたどって一つのファイル全体を読み込む */
-    size_t LoadFile(void* buf, size_t len, const DirectoryEntry& entry) {
-        auto is_valid_cluster = [](uint32_t c) {
-            return c != 0 && c != fat::kEndOfClusterchain;
-        };
-        auto cluster = entry.FirstCluster();
-
-        const auto buf_uint8 = reinterpret_cast<uint8_t*>(buf);
-        const auto buf_end = buf_uint8 + len;
-        auto p = buf_uint8;
-
-        while (is_valid_cluster(cluster)) {
-            if (bytes_per_cluster >= buf_end - p) {
-                memcpy(p, GetSectorByCluster<uint8_t>(cluster), buf_end - p);
-                return len;
-            }
-            memcpy(p, GetSectorByCluster<uint8_t>(cluster), bytes_per_cluster);
-            p += bytes_per_cluster;
-            cluster = NextCluster(cluster);
-        }
-        return p - buf_uint8;
+    size_t LoadFile(void* buf, size_t len, DirectoryEntry& entry) {
+        return FileDescriptor{entry}.Read(buf, len);
     }
 
     bool IsEndOfClusterchain(unsigned long cluster) {
@@ -345,5 +326,20 @@ namespace fat {
         wr_off_ += total;
         fat_entry_.file_size = wr_off_;
         return total;
+    }
+
+    size_t FileDescriptor::Load(void* buf, size_t len, size_t offset) {
+        FileDescriptor fd{fat_entry_};
+        fd.rd_off_ = offset;
+
+        unsigned long cluster = fat_entry_.FirstCluster();
+        while (offset >= bytes_per_cluster) {
+            offset -= bytes_per_cluster;
+            cluster = NextCluster(cluster);
+        }
+
+        fd.rd_cluster_ = cluster;
+        fd.rd_cluster_off_ = offset;
+        return fd.Read(buf, len);
     }
 }

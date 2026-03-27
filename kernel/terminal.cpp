@@ -385,7 +385,7 @@ void Terminal::ExecuteLine() {
     }
 }
 
-Error Terminal::ExecuteFile(const fat::DirectoryEntry& file_entry, char* command, char* first_arg) {
+Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry, char* command, char* first_arg) {
     std::vector<uint8_t> file_buf(file_entry.file_size);
     fat::LoadFile(&file_buf[0], file_buf.size(), file_entry);
 
@@ -440,12 +440,21 @@ Error Terminal::ExecuteFile(const fat::DirectoryEntry& file_entry, char* command
     task.SetDPagingBegin(elf_next_page);
     task.SetDPagingEnd(elf_next_page);
 
+    /** メモリマップとファイルの末尾を設定
+     * 0方向にアドレス範囲を拡大する
+     * デマンドページングと逆側から同一の領域を逆向きに利用していくので，
+     * 最終的には互いに衝突するような形になる
+     * 一方で双方が必要な範囲を最大限利用できる構造である
+     */
+    task.SetFileMapEnd(0xffff'ffff'ffff'e000);
+
     auto entry_addr = elf_header->e_entry;
     int ret = CallApp(argc.value, argv, 3 << 3 | 3, entry_addr,
                       stack_frame_addr.value + 4096 - 8,
                       &task.OSStackPointer());
     /* app 終了時に一度リセットして，ファイルが積み重なり続けるのを防ぐ */
     task.Files().clear();
+    task.FileMaps().clear();
 
     char s[64];
     sprintf(s, "app exited. ret = %d\n", ret);
@@ -658,4 +667,8 @@ size_t TerminalFileDescriptor::Read(void* buf, size_t len) {
 size_t TerminalFileDescriptor::Write(const void* buf, size_t len) {
     term_.Print(reinterpret_cast<const char*>(buf), len);
     return len;
+}
+
+size_t TerminalFileDescriptor::Load(void* buf, size_t len, size_t offset) {
+    return 0;
 }
