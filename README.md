@@ -1,6 +1,17 @@
 # MikanOS 開発記録
 
 『ゼロからのOS自作入門』を進めながら、OSの仕組みを学習するリポジトリ
+
+## ファイル構成
+- `MikanLoaderPkg/`
+    - UEFIアプリケーションとしてのMikanOSローダー
+- `kernel/`
+    - MikanOSカーネル
+- `resource/nihongo.ttf`
+    - IPAゴシックフォントファイル
+- `IPA_Font_License_Agreement_v1.0.txt`
+    - IPAフォントのライセンス
+
 ## 環境
 - **OS**: Ubuntu20.04(WSL2)
 - **Editor**: VS Code (Remote WSL)
@@ -541,3 +552,4 @@ This project is based on the book:
 - Some files may include direct copies or modifications derived from the upstream project.
 - This repository is distributed under Apache License 2.0. See `LICENSE` for details.
 - If you redistribute modified files, keep upstream attribution and clearly indicate your changes.
+

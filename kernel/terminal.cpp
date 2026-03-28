@@ -474,9 +474,9 @@ Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry, char* command, char
         return argc.error;
     }
 
-    
-    LinearAddress4Level stack_frame_addr{0xffff'ffff'ffff'e000};
-    if (auto err = SetupPageMaps(stack_frame_addr, 1)) {
+    const int stack_size = 8 * 4096;
+    LinearAddress4Level stack_frame_addr{0xffff'ffff'ffff'f000 - stack_size};
+    if (auto err = SetupPageMaps(stack_frame_addr, stack_size / 4096)) {
         return err;
     }
 
@@ -498,10 +498,10 @@ Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry, char* command, char
      * 最終的には互いに衝突するような形になる
      * 一方で双方が必要な範囲を最大限利用できる構造である
      */
-    task.SetFileMapEnd(0xffff'ffff'ffff'e000);
+    task.SetFileMapEnd(stack_frame_addr.value);
 
     int ret = CallApp(argc.value, argv, 3 << 3 | 3, app_load.entry,
-                      stack_frame_addr.value + 4096 - 8,
+                      stack_frame_addr.value + stack_size - 8,
                       &task.OSStackPointer());
     /* app 終了時に一度リセットして，ファイルが積み重なり続けるのを防ぐ */
     task.Files().clear();

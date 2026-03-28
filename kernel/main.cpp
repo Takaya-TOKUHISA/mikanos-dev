@@ -139,6 +139,7 @@ extern "C" void KernelMainNewStack(
     InitializeInterrupt();
         
     fat::Initialize(volume_image);
+    InitializeFont();
     InitializePCI();
 
 
