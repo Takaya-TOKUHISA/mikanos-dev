@@ -28,7 +28,7 @@ mnt/
 *.swp
 
 *.data
-*.txt
+diff.txt
 .*.un~
 
 /html
