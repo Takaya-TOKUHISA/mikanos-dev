@@ -343,6 +343,7 @@ void Terminal::ExecuteLine() {
     }
 
     auto original_stdout = files_[1];
+    int exit_code = 0;
 
     if (redir_char) {
         *redir_char = 0;
@@ -370,7 +371,11 @@ void Terminal::ExecuteLine() {
 
 
     if (strcmp(command, "echo") == 0) {
-        if (first_arg) {
+        if (first_arg && first_arg[0] == '$') {
+            if (strcmp(&first_arg[1], "?") == 0) {
+                PrintToFD(*files_[1], "%d", last_exit_code_);
+            } 
+        } else if (first_arg){
             PrintToFD(*files_[1], "%s", first_arg);
         }
         PrintToFD(*files_[1], "\n");
@@ -396,6 +401,7 @@ void Terminal::ExecuteLine() {
             auto [ dir, post_slash ] = fat::FindFile(first_arg);
             if (dir == nullptr) {
                 PrintToFD(*files_[2], "No such file or directory: %s\n", first_arg);
+                exit_code = 1;
             } else if (dir->attr == fat::Attribute::kDirectory) {
                 ListAllEntries(*files_[1], dir->FirstCluster());
             } else {
@@ -403,6 +409,7 @@ void Terminal::ExecuteLine() {
                 fat::FormatName(*dir, name);
                 if (post_slash) {
                     PrintToFD(*files_[2], "%s is not a directory\n", name);
+                    exit_code = 1;
                 } else {
                     PrintToFD(*files_[1], "%s\n", name);
                 }
@@ -412,10 +419,12 @@ void Terminal::ExecuteLine() {
         auto [ file_entry, post_slash ] = fat::FindFile(first_arg);
         if (!file_entry) {
             PrintToFD(*files_[2], "no such file: %s\n", first_arg);
+            exit_code = 1;
         } else if (file_entry->attr != fat::Attribute::kDirectory && post_slash) {
             char name[13];
             fat::FormatName(*file_entry, name);
             PrintToFD(*files_[2], "%s is not a directory\n", name);
+            exit_code = 1;
         } else {
             fat::FileDescriptor fd{*file_entry};
             char u8buf[5];
@@ -452,20 +461,29 @@ void Terminal::ExecuteLine() {
         auto  [ file_entry, post_slash ] = fat::FindFile(command);
         if (!file_entry) {
             PrintToFD(*files_[2], "no such command: %s\n", command);
+            exit_code = 1;
         } else if (file_entry->attr != fat::Attribute::kDirectory && post_slash) {
             char name[13];
             fat::FormatName(*file_entry, name);
             PrintToFD(*files_[2], "%s is not a directory\n", name);
-        } else if (auto err = ExecuteFile(*file_entry, command, first_arg)) {
-            PrintToFD(*files_[2], "failed to exec file: %s\n", err.Name());
+            exit_code = 1;
+        } else {
+            auto [ ec, err ] = ExecuteFile(*file_entry, command, first_arg);
+            if (err) {
+                PrintToFD(*files_[2], "failed to exec file: %s\n", err.Name());
+                exit_code = -ec;
+            } else {
+                exit_code = ec;
+            }
         }
     }
+    last_exit_code_ = exit_code;
     /* 最後に1を標準出力を戻す */
     files_[1] = original_stdout;
 }
 
-Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry,
-                            char* command, char* first_arg) {
+WithError<int> Terminal::ExecuteFile(fat::DirectoryEntry& file_entry,
+                                     char* command, char* first_arg) {
     __asm__("cli");
     auto& task = task_manager->CurrentTask();
     __asm__("sti");
@@ -475,12 +493,12 @@ Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry,
      */
     auto [ app_load, err ] = LoadApp(file_entry, task);
     if (err) {
-        return err;
+        return { 0, err };
     }
     /* argv をアプリ用ページ内に構築する */
     LinearAddress4Level args_frame_addr{0xffff'ffff'ffff'f000}; // 後半(アプリ)領域
     if (auto err = SetupPageMaps(args_frame_addr, 1)) {
-        return err;
+        return { 0, err };
     }
     auto argv = reinterpret_cast<char**>(args_frame_addr.value);
     int argv_len = 32;
@@ -488,13 +506,13 @@ Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry,
     int argbuf_len = 4096 - sizeof(char**) * argv_len;
     auto argc = MakeArgVector(command, first_arg, argv, argv_len, argbuf, argbuf_len);
     if (argc.error) {
-        return argc.error;
+        return { 0, argc.error };
     }
 
     const int stack_size = 8 * 4096;
     LinearAddress4Level stack_frame_addr{0xffff'ffff'ffff'f000 - stack_size};
     if (auto err = SetupPageMaps(stack_frame_addr, stack_size / 4096)) {
-        return err;
+        return { 0, err };
     }
 
     for (int i = 0; i < files_.size(); ++i) {
@@ -521,18 +539,14 @@ Error Terminal::ExecuteFile(fat::DirectoryEntry& file_entry,
     /* app 終了時に一度リセットして，ファイルが積み重なり続けるのを防ぐ */
     task.Files().clear();
     task.FileMaps().clear();
-
-    char s[64];
-    sprintf(s, "app exited. ret = %d\n", ret);
-    Print(s); 
     
 
     if (auto err = CleanPageMaps(LinearAddress4Level{0xffff'8000'0000'0000})) {
-        return err;
+        return { ret, err };
     }
 
 
-    return FreePML4(task);
+    return { ret, FreePML4(task) };
 }
 
 void Terminal::Print(char32_t c) {
