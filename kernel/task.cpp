@@ -213,6 +213,53 @@ Task& TaskManager::CurrentTask() {
     return *running_[current_level_].front();
 }
 
+void TaskManager::Finish(int exit_code) {
+    /* 現在のタスクをランキューから取り除く */
+    Task* current_task = RotateCurrentRunQueue(true);
+
+    /* 現在実行中のタスクをtasks_から取り除く */
+    const auto task_id = current_task->ID();
+    auto it = std::find_if(
+        tasks_.begin(), tasks_.end(),
+        [current_task](const auto& t){ return t.get() == current_task; });
+    tasks_.erase(it);
+
+    finish_tasks_[task_id] = exit_code;
+    if (auto it = finish_waiter_.find(task_id); it != finish_waiter_.end()) {
+        /* 現在のタスクの終了待ちのタスクをチェックして存在するならそれを起こす */
+        auto waiter = it->second;
+        finish_waiter_.erase(it);
+        Wakeup(waiter);
+    }
+
+    /* 次のタスクに処理を回す */
+    RestoreContext(&CurrentTask().Context());
+}
+
+/** FinishでWakeupすることでSleepから起きて再確認する
+ * この関数中は割り込みを禁止するべきである．
+ * 例としてタスクAのfind(タスクBのID)とfinish_waiter_[タスクBのID] = current_taskの間にAとBの間でタスク切り替えが起きると，
+ * 切り替え後にBでFinishが呼び出されたとき，
+ * Aはfinish_waiter_に自身を追加していないため，B側で検知できずWakeupで起こしてもらえない．
+ * そのため，再度タスク切り替えでBからAに復帰した際にAがSleepすると永眠してしまう．
+ */
+WithError<int> TaskManager::WaitFinish(uint64_t task_id) {
+    int exit_code;
+    Task* current_task = &CurrentTask();
+    while (true) {
+        /* 自分が終了待ちしているタスクがfinish_tasks_に追加されているか確認する */
+        if (auto it = finish_tasks_.find(task_id); it != finish_tasks_.end()) {
+            exit_code = it->second;
+            finish_tasks_.erase(it);
+            break;
+        }
+        /* 追加されていなければ自分をfinsh_waiter_[task_id]に追加してSleepする */
+        finish_waiter_[task_id] = current_task;
+        Sleep(current_task);
+    }
+    return { exit_code, MAKE_ERROR(Error::kSuccess) };
+}
+
 void TaskManager::ChangeLevelRunning(Task* task, int level) {
     if (level < 0 || level == task->Level()) {
         return;
