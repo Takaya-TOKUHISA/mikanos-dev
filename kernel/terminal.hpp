@@ -44,6 +44,7 @@ class Terminal {
 
         Task& UnderlyingTask() const { return task_; }
         int LastExitCode() const { return last_exit_code_; }
+        void Redraw();
 
     private:
         std::shared_ptr<ToplevelWindow> window_;
@@ -105,5 +106,5 @@ class PipeDescriptor : public FileDescriptor {
         Task& task_;
         char data_[16];
         size_t len_{0};
-        bool closed_{false}; // 送信の終了を示す
+        bool closed_{false}; // 相手からの送信の終了を示す
 };
