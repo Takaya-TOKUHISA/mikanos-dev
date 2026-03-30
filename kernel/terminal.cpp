@@ -431,6 +431,8 @@ void Terminal::ExecuteLine() {
             .InitContext(TaskTerminal, reinterpret_cast<int64_t>(term_desc))
             .Wakeup()
             .ID();
+        /* パイプ中はキー入力をパイプ先に切り替える */
+        (*layer_task_map)[layer_id_] = subtask_id;
     }
 
     if (strcmp(command, "echo") == 0) {
@@ -539,6 +541,8 @@ void Terminal::ExecuteLine() {
         /* 受信側コマンドの終了を待機する */
         __asm__("cli");
         auto [ ec, err ] = task_manager->WaitFinish(subtask_id);
+        /* キー入力先を戻す */
+        (*layer_task_map)[layer_id_] = task_.ID();
         __asm__("sti");
         
         if (err) {
