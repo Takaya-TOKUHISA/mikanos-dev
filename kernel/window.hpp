@@ -12,6 +12,13 @@
 #include "graphics.hpp"
 #include "frame_buffer.hpp"
 
+enum class WindowRegion {
+    kTitleBar,
+    kCloseButton,
+    kBorder,
+    kOther,
+};
+
 /** @brief Window クラスはグラフィックの表示領域を表す。
  *
  * タイトルやメニューがあるウィンドウだけでなく，マウスカーソルの表示領域なども対象とする。
@@ -75,6 +82,7 @@ class Window {
 
         virtual void Activate() {}
         virtual void Deactivate() {}
+        virtual WindowRegion GetWindowRegion(Vector2D<int> pos);
 
     private:
         int width_, height_;
@@ -112,6 +120,9 @@ class ToplevelWindow : public Window {
         
         virtual void Activate() override;
         virtual void Deactivate() override;
+        virtual WindowRegion GetWindowRegion(Vector2D<int> pos) override;
+
+
 
         InnerAreaWriter* InnerWriter() { return &inner_writer_; }
         Vector2D<int> InnerSize() const;
