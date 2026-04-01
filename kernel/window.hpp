@@ -79,6 +79,7 @@ class Window {
          * @param dst_pos   移動先の原点
          */
         void Move(Vector2D<int> dst_pos, const Rectangle<int>& src);
+        void RowMove(Vector2D<int> dst_pos, const Rectangle<int>& src);
 
         virtual void Activate() {}
         virtual void Deactivate() {}

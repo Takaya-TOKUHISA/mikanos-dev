@@ -287,8 +287,12 @@ Rectangle<int> Terminal::BlinkCursor() {
 /* カーソル描画 */
 void Terminal::DrawCursor(bool visible) {
     if (show_window_) {
-        const auto color = visible ? ToColor(0xffffff) : ToColor(0);
-        FillRectangle(*window_->Writer(), CalcCursorPos(), {2, 15}, color);
+        if (visible) {
+            FillRectangle(*window_->Writer(), CalcCursorPos(), {2, 15}, ToColor(0xffffff));
+        } else {
+            FillRectangle(*window_->Writer(), CalcCursorPos(), {2, 15}, ToColor(0x000000));
+            WriteAscii(*window_->Writer(), CalcCursorPos(), linebuf_[cursor_.x - 1], {255, 255, 255});
+        }
     }
 }
 
@@ -298,13 +302,25 @@ Vector2D<int> Terminal::CalcCursorPos() const {
         Vector2D<int>{4 + 8 * cursor_.x, 4 + 16 * cursor_.y};
 }
 
+void Terminal::MoveCursor(int direction) {
+    if (cursor_.x + direction < 1 ||cursor_.x + direction >= kColumns) {
+        return;
+    }
+    if (cursor_.x - 1 + direction > linebuf_index_) {
+        return;
+    }
+    cursor_.x += direction;
+}
+
 /* 文字入力の識別 */
 Rectangle<int> Terminal::InputKey(
         uint8_t modifier, uint8_t keycode, char ascii) {
     DrawCursor(false);
-
-    Rectangle<int> draw_area{CalcCursorPos(), {8*2, 16}};
-
+        if (linebuf_index_ >= kLineMax - 1 && ascii != '\n') {
+        DrawCursor(true);
+        return {};
+    }
+    Rectangle<int> draw_area{CalcCursorPos(), {8*2, 16}}; 
     if (ascii == '\n') {
         linebuf_[linebuf_index_] = 0;
         if (linebuf_index_ > 0) {
@@ -320,38 +336,60 @@ Rectangle<int> Terminal::InputKey(
             Scroll1();
         }
         ExecuteLine();
+        memset(&linebuf_[0], 0, kLineMax);
         Print(">");
         draw_area.pos = ToplevelWindow::kTopLeftMargin;
         draw_area.size = window_->InnerSize();
     } else if (ascii == '\b') {
-        if (cursor_.x > 0) {
+        /* 0には>があるため1より大きい時にのみ削除が動く */
+        if (cursor_.x > 1) {
             --cursor_.x;
+            auto tail_index = linebuf_index_ - cursor_.x;
+            memmove(&linebuf_[cursor_.x - 1], &linebuf_[cursor_.x], tail_index);
             if (show_window_) {
-                FillRectangle(*window_->Writer(), CalcCursorPos(), {8, 16}, {0, 0, 0});
+                Rectangle<int> move_src{
+                    ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+8*cursor_.x+8, 4+16*cursor_.y},
+                    {tail_index*8, 16},
+                };
+                window_->RowMove(ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+8*cursor_.x, 4+16*cursor_.y}, move_src);
+                auto pos = ToplevelWindow::kTopLeftMargin +
+                            Vector2D<int>{4 + 8 * linebuf_index_, 4 + 16 * cursor_.y};
+                FillRectangle(*window_->Writer(), pos, {8, 15}, ToColor(0x000000));
             }
-            draw_area.pos = CalcCursorPos();
-
             if (linebuf_index_ > 0) {
-                --linebuf_index_;
+                linebuf_[--linebuf_index_] = 0;
             }
         }
     } else if (ascii != 0) {
-        if (cursor_.x < kColumns - 1 && linebuf_index_ < kLineMax - 1) {
-            linebuf_[linebuf_index_] = ascii;
-            ++linebuf_index_;
+        if (linebuf_index_ < kColumns - 1 && cursor_.x < kColumns - 1) {
+            auto tail_index = linebuf_index_ - (cursor_.x - 1);
+            memmove(&linebuf_[cursor_.x], &linebuf_[cursor_.x - 1], tail_index);
+            linebuf_[cursor_.x - 1] = ascii;
             if (show_window_) {
-                WriteAscii(*window_->Writer(), CalcCursorPos(), ascii, {255, 255, 255});
+                Rectangle<int> move_src{
+                    ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+8*cursor_.x, 4+16*cursor_.y},
+                    {tail_index*8, 16},
+                };
+                window_->RowMove(ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+8*cursor_.x+8, 4+16*cursor_.y}, move_src);
+                FillRectangle(*window_->Writer(), CalcCursorPos(), {2, 15}, ToColor(0x000000));
+                WriteAscii(*window_->Writer(), CalcCursorPos(), linebuf_[cursor_.x - 1], {255, 255, 255});
             }
+            ++linebuf_index_;
+            linebuf_[linebuf_index_] = 0;
             ++cursor_.x;
         }
     } else if (keycode == 0x51) {
         draw_area = HistoryUpDown(-1);
     } else if (keycode == 0x52) {
         draw_area = HistoryUpDown(1);
+    } else if (keycode == 0x50) {
+        MoveCursor(-1);
+    } else if (keycode == 0x4f) {
+        MoveCursor(1);
     }
 
     DrawCursor(true);
-
+    Log(kWarn, "%d: %s\n", cursor_.x, &linebuf_[0]);   
     return draw_area;
 }
 
@@ -725,6 +763,9 @@ Rectangle<int> Terminal::HistoryUpDown(int direction) {
 
     WriteString(*window_->Writer(), first_pos, history, {255, 255, 255});
     cursor_.x = linebuf_index_ + 1;
+    if (cursor_.x >= kColumns) {
+        cursor_.x = kColumns - 1;
+    }
     return draw_area;
 }
 
@@ -928,3 +969,4 @@ void PipeDescriptor::FinishWrite() {
     task_.SendMessage(msg);
     __asm__("sti");
 }
+

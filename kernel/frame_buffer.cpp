@@ -111,3 +111,37 @@ void FrameBuffer::Move(Vector2D<int> dst_pos, const Rectangle<int>& src) {
         }
     }
 }
+
+void FrameBuffer::RowMove(Vector2D<int> dst_pos, const Rectangle<int>& src) {
+    const auto bytes_per_pixel = BytesPerPixel(config_.pixel_format);
+    if (bytes_per_pixel <= 0) {
+        return;
+    }
+
+    const Rectangle<int> src_area_shifted{dst_pos, src.size};  // 移動後の長方形情報
+    const Rectangle<int> src_outline{dst_pos - src.pos, FrameBufferSize(config_)}; // 移動後の長方形範囲
+    const Rectangle<int> dst_outline{{0, 0}, FrameBufferSize(config_)};            // 描画対象として有効な範囲
+    const auto move_area = dst_outline & src_outline & src_area_shifted;           // 最終的に画面内に収まる移動が必要な長方形の情報
+    if (move_area.size.x <= 0 || move_area.size.y <= 0) {
+        return;
+    }
+
+    const auto shift = dst_pos - src.pos;                                          // 移動距離
+    const auto src_start_pos = move_area.pos - shift;                              
+    const size_t row_bytes = static_cast<size_t>(bytes_per_pixel) * move_area.size.x;
+
+    // Keep source rows intact when moving downward.
+    if (shift.y > 0) {
+        for (int y = move_area.size.y - 1; y >= 0; --y) {
+            const auto dst_row = move_area.pos + Vector2D<int>{0, y};
+            const auto src_row = src_start_pos + Vector2D<int>{0, y};
+            memmove(FrameAddrAt(dst_row, config_), FrameAddrAt(src_row, config_), row_bytes);
+        }
+    } else {
+        for (int y = 0; y < move_area.size.y; ++y) {
+            const auto dst_row = move_area.pos + Vector2D<int>{0, y};
+            const auto src_row = src_start_pos + Vector2D<int>{0, y};
+            memmove(FrameAddrAt(dst_row, config_), FrameAddrAt(src_row, config_), row_bytes);
+        }
+    }
+}

@@ -9,6 +9,9 @@ namespace {
 
     std::pair<const char*, bool>
     NextPathElement(const char* path, char* path_elem) {
+        if (std::strlen(path) > 13) {
+            return { nullptr, false };
+        }
         const char* next_slash = strchr(path, '/');
         if (next_slash == nullptr) {
             strcpy(path_elem, path);
