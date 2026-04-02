@@ -315,12 +315,13 @@ void Terminal::MoveCursor(int direction) {
 /* 文字入力の識別 */
 Rectangle<int> Terminal::InputKey(
         uint8_t modifier, uint8_t keycode, char ascii) {
+    const auto cursor_before = CalcCursorPos();
     DrawCursor(false);
         if (linebuf_index_ >= kLineMax - 1 && ascii != '\n') {
         DrawCursor(true);
         return {};
     }
-    Rectangle<int> draw_area{CalcCursorPos(), {8*2, 16}}; 
+    Rectangle<int> draw_area{cursor_before, {8, 16}};
     if (ascii == '\n') {
         linebuf_[linebuf_index_] = 0;
         if (linebuf_index_ > 0) {
@@ -354,7 +355,10 @@ Rectangle<int> Terminal::InputKey(
                 window_->RowMove(ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+8*cursor_.x, 4+16*cursor_.y}, move_src);
                 auto pos = ToplevelWindow::kTopLeftMargin +
                             Vector2D<int>{4 + 8 * linebuf_index_, 4 + 16 * cursor_.y};
-                FillRectangle(*window_->Writer(), pos, {8, 15}, ToColor(0x000000));
+                FillRectangle(*window_->Writer(), pos, {8, 16}, ToColor(0x000000));
+                draw_area.pos = ToplevelWindow::kTopLeftMargin +
+                    Vector2D<int>{4 + 8 * cursor_.x, 4 + 16 * cursor_.y};
+                draw_area.size = {(tail_index + 1) * 8, 16};
             }
             if (linebuf_index_ > 0) {
                 linebuf_[--linebuf_index_] = 0;
@@ -371,8 +375,11 @@ Rectangle<int> Terminal::InputKey(
                     {tail_index*8, 16},
                 };
                 window_->RowMove(ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+8*cursor_.x+8, 4+16*cursor_.y}, move_src);
-                FillRectangle(*window_->Writer(), CalcCursorPos(), {2, 15}, ToColor(0x000000));
+                FillRectangle(*window_->Writer(), CalcCursorPos(), {8, 16}, ToColor(0x000000));
                 WriteAscii(*window_->Writer(), CalcCursorPos(), linebuf_[cursor_.x - 1], {255, 255, 255});
+                draw_area.pos = ToplevelWindow::kTopLeftMargin +
+                    Vector2D<int>{4 + 8 * cursor_.x, 4 + 16 * cursor_.y};
+                draw_area.size = {(tail_index + 1) * 8, 16};
             }
             ++linebuf_index_;
             linebuf_[linebuf_index_] = 0;
@@ -389,6 +396,18 @@ Rectangle<int> Terminal::InputKey(
     }
 
     DrawCursor(true);
+    const auto cursor_after = CalcCursorPos();
+
+    // カーソルの残像を防ぐため，変更前後のカーソル描画領域を再描画範囲に含める
+    const int left = std::min(draw_area.pos.x, std::min(cursor_before.x, cursor_after.x));
+    const int top = std::min(draw_area.pos.y, std::min(cursor_before.y, cursor_after.y));
+    const int right = std::max(draw_area.pos.x + draw_area.size.x,
+                               std::max(cursor_before.x, cursor_after.x) + 8);
+    const int bottom = std::max(draw_area.pos.y + draw_area.size.y,
+                                std::max(cursor_before.y, cursor_after.y) + 16);
+    draw_area.pos = {left, top};
+    draw_area.size = {right - left, bottom - top};
+
     Log(kWarn, "%d: %s\n", cursor_.x, &linebuf_[0]);   
     return draw_area;
 }
