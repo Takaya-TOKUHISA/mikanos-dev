@@ -274,6 +274,9 @@ Terminal::Terminal(Task& task, const TerminalDescriptor* term_desc)
             .ID();
 
         Print(">");
+        linebuf_[0] = ' ';
+        ++linebuf_index_;
+        cursor_.x = 1;
     }   
     cmd_history_.resize(8);
 }
@@ -296,6 +299,16 @@ void Terminal::DrawCursor(bool visible) {
 Vector2D<int> Terminal::CalcCursorPos() const {
     return ToplevelWindow::kTopLeftMargin +
         Vector2D<int>{4 + 8 * cursor_.x, 4 + 16 * cursor_.y};
+}
+
+void Terminal::MoveCursor(int direction) {
+    if (cursor_.x + direction < 1 ||cursor_.x + direction >= kColumns) {
+        return;
+    }
+    if (cursor_.x - 1 + direction > linebuf_index_) {
+        return;
+    }
+    cursor_.x += direction;
 }
 
 /* 文字入力の識別 */
@@ -321,11 +334,14 @@ Rectangle<int> Terminal::InputKey(
         }
         ExecuteLine();
         Print(">");
+        linebuf_[0] = ' ';
+        ++linebuf_index_;
         draw_area.pos = ToplevelWindow::kTopLeftMargin;
         draw_area.size = window_->InnerSize();
     } else if (ascii == '\b') {
-        if (cursor_.x > 0) {
+        if (cursor_.x > 1) {
             --cursor_.x;
+            memmove(&linebuf_[cursor_.x], &linebuf_[cursor_.x + 1], linebuf_index_ - cursor_.x + 1);
             if (show_window_) {
                 FillRectangle(*window_->Writer(), CalcCursorPos(), {8, 16}, {0, 0, 0});
             }
@@ -337,7 +353,8 @@ Rectangle<int> Terminal::InputKey(
         }
     } else if (ascii != 0) {
         if (cursor_.x < kColumns - 1 && linebuf_index_ < kLineMax - 1) {
-            linebuf_[linebuf_index_] = ascii;
+            memmove(&linebuf_[cursor_.x + 1], &linebuf_[cursor_.x], linebuf_index_ - cursor_.x + 1);
+            linebuf_[cursor_.x] = ascii;
             ++linebuf_index_;
             if (show_window_) {
                 WriteAscii(*window_->Writer(), CalcCursorPos(), ascii, {255, 255, 255});
@@ -348,8 +365,16 @@ Rectangle<int> Terminal::InputKey(
         draw_area = HistoryUpDown(-1);
     } else if (keycode == 0x52) {
         draw_area = HistoryUpDown(1);
+    } else if (keycode == 0x50) {
+        MoveCursor(-1);
+    } else if (keycode == 0x4f) {
+        MoveCursor(1);
     }
-
+    Log(kWarn, "cursor:%d length:%d\n",cursor_.x, linebuf_index_);
+    for (int i = 0; i < linebuf_index_; ++i) {
+        Log(kWarn, "%c", linebuf_[i]);
+    }
+    Log(kWarn, "\n");
     DrawCursor(true);
 
     return draw_area;
@@ -366,8 +391,11 @@ void Terminal::Scroll1() {
 }
 
 void Terminal::ExecuteLine() {
-    char* command = &linebuf_[0];
-    char* first_arg = strchr(&linebuf_[0], ' ');
+    int space = 0;
+    while (isspace(linebuf_[space])) space++;
+    Log(kWarn, "space: %s\n", &linebuf_[space]);
+    char* command = &linebuf_[space];
+    char* first_arg = strchr(&linebuf_[space], ' ');
     char* redir_char = strchr(&linebuf_[0], '>');
     char* pipe_char = strchr(&linebuf_[0], '|');
     if (first_arg) {
