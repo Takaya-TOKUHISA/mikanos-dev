@@ -306,11 +306,11 @@ Vector2D<int> Terminal::CalcCursorPos() const {
         Vector2D<int>{4 + 8 * cursor_.x, 4 + 16 * cursor_.y};
 }
 
-Rectangle<int> Terminal::MoveCursor(int direction) {
+void Terminal::MoveCursor(int direction) {
     if (cursor_.x + direction >= 1 && cursor_.x + direction < kColumns && cursor_.x + direction <= linebuf_index_) {
         cursor_.x += direction;
     }
-    return {CalcCursorPos(), {8*2, 16}};
+    return;
 }
 
 /* 文字入力の識別 */
@@ -381,9 +381,9 @@ Rectangle<int> Terminal::InputKey(
     } else if (keycode == 0x52) {
         draw_area = HistoryUpDown(1);
     } else if (keycode == 0x50) {
-        draw_area = MoveCursor(-1);
+        MoveCursor(-1);
     } else if (keycode == 0x4f) {
-        draw_area =  MoveCursor(1);
+        MoveCursor(1);
     }
     Log(kWarn, "pos:%d, %d\n", draw_area.pos.x, draw_area.pos.y);
     Log(kWarn, "size:%d, %d\n", draw_area.size.x, draw_area.size.y);
