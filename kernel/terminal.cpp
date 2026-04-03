@@ -290,8 +290,13 @@ Rectangle<int> Terminal::BlinkCursor() {
 /* カーソル描画 */
 void Terminal::DrawCursor(bool visible) {
     if (show_window_) {
-        const auto color = visible ? ToColor(0xffffff) : ToColor(0);
-        FillRectangle(*window_->Writer(), CalcCursorPos(), {2, 15}, color);
+        if (visible) {
+            FillRectangle(*window_->Writer(), CalcCursorPos(), {2, 15}, {255, 255, 255});
+        } else {
+            FillRectangle(*window_->Writer(), CalcCursorPos(), {2, 15}, {0, 0, 0});
+            WriteAscii(*window_->Writer(), CalcCursorPos(), linebuf_[cursor_.x], {255, 255, 255});
+        }
+        
     }
 }
 
@@ -301,14 +306,11 @@ Vector2D<int> Terminal::CalcCursorPos() const {
         Vector2D<int>{4 + 8 * cursor_.x, 4 + 16 * cursor_.y};
 }
 
-void Terminal::MoveCursor(int direction) {
-    if (cursor_.x + direction < 1 ||cursor_.x + direction >= kColumns) {
-        return;
+Rectangle<int> Terminal::MoveCursor(int direction) {
+    if (cursor_.x + direction >= 1 && cursor_.x + direction < kColumns && cursor_.x + direction <= linebuf_index_) {
+        cursor_.x += direction;
     }
-    if (cursor_.x - 1 + direction > linebuf_index_) {
-        return;
-    }
-    cursor_.x += direction;
+    return {CalcCursorPos(), {8*2, 16}};
 }
 
 /* 文字入力の識別 */
@@ -333,6 +335,7 @@ Rectangle<int> Terminal::InputKey(
             Scroll1();
         }
         ExecuteLine();
+        memset(&linebuf_[0], 0, sizeof(linebuf_));
         Print(">");
         linebuf_[0] = ' ';
         ++linebuf_index_;
@@ -343,7 +346,13 @@ Rectangle<int> Terminal::InputKey(
             --cursor_.x;
             memmove(&linebuf_[cursor_.x], &linebuf_[cursor_.x + 1], linebuf_index_ - cursor_.x + 1);
             if (show_window_) {
-                FillRectangle(*window_->Writer(), CalcCursorPos(), {8, 16}, {0, 0, 0});
+                Rectangle<int> move_src{
+                    ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+cursor_.x*8+8, 4+cursor_.y*16},
+                    {8*(linebuf_index_ - cursor_.x), 16}
+                };
+                window_->RowMove(ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+cursor_.x*8, 4+cursor_.y*16}, move_src);
+                FillRectangle(*window_->Writer(), ToplevelWindow::kTopLeftMargin +
+                              Vector2D<int>{4 + 8 * linebuf_index_, 4 + 16 * cursor_.y}, {8, 16}, {0, 0, 0});
             }
             draw_area.pos = CalcCursorPos();
 
@@ -355,10 +364,16 @@ Rectangle<int> Terminal::InputKey(
         if (cursor_.x < kColumns - 1 && linebuf_index_ < kLineMax - 1) {
             memmove(&linebuf_[cursor_.x + 1], &linebuf_[cursor_.x], linebuf_index_ - cursor_.x + 1);
             linebuf_[cursor_.x] = ascii;
-            ++linebuf_index_;
             if (show_window_) {
+                Rectangle<int> move_src{
+                    ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+cursor_.x*8, 4+cursor_.y*16},
+                    {8*(linebuf_index_ - cursor_.x), 16}
+                };
+                window_->RowMove(ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+cursor_.x*8+8, 4+cursor_.y*16}, move_src);
+                FillRectangle(*window_->Writer(), CalcCursorPos(), {8, 16}, {0, 0, 0});
                 WriteAscii(*window_->Writer(), CalcCursorPos(), ascii, {255, 255, 255});
             }
+            ++linebuf_index_;
             ++cursor_.x;
         }
     } else if (keycode == 0x51) {
@@ -366,11 +381,12 @@ Rectangle<int> Terminal::InputKey(
     } else if (keycode == 0x52) {
         draw_area = HistoryUpDown(1);
     } else if (keycode == 0x50) {
-        MoveCursor(-1);
+        draw_area = MoveCursor(-1);
     } else if (keycode == 0x4f) {
-        MoveCursor(1);
+        draw_area =  MoveCursor(1);
     }
-    Log(kWarn, "cursor:%d length:%d\n",cursor_.x, linebuf_index_);
+    Log(kWarn, "pos:%d, %d\n", draw_area.pos.x, draw_area.pos.y);
+    Log(kWarn, "size:%d, %d\n", draw_area.size.x, draw_area.size.y);
     for (int i = 0; i < linebuf_index_; ++i) {
         Log(kWarn, "%c", linebuf_[i]);
     }

@@ -128,6 +128,10 @@ void Window::Move(Vector2D<int> dst_pos, const Rectangle<int>& src) {
     shadow_buffer_.Move(dst_pos, src);
 }
 
+void Window::RowMove(Vector2D<int> dst_pos, const Rectangle<int>& src) {
+    shadow_buffer_.RowMove(dst_pos, src);
+}
+
 WindowRegion Window::GetWindowRegion(Vector2D<int> pos) {
     return WindowRegion::kOther;
 }
