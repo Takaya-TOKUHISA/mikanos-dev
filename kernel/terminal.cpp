@@ -13,6 +13,7 @@
 #include "timer.hpp"
 #include "keyboard.hpp"
 #include "logger.hpp"
+#include "clipboard.hpp"
 
 namespace {
 
@@ -320,7 +321,13 @@ Rectangle<int> Terminal::InputKey(
 
     Rectangle<int> draw_area{CalcCursorPos(), {8*2, 16}};
 
-    if (ascii == '\n') {
+    if ((modifier & (kLControlBitMask | kRControlBitMask)) && ascii == 'c') {
+        clip_board->CopyString("test", 4);
+    } else if ((modifier & (kLControlBitMask | kRControlBitMask)) && ascii == 'v') {
+        char buf[4096];
+        clip_board->PasteString(buf, sizeof(buf));
+        Log(kWarn, "%s\n", buf);
+    } else if (ascii == '\n') {
         linebuf_[linebuf_index_] = 0;
         if (linebuf_index_ > 0) {
             cmd_history_.pop_back();

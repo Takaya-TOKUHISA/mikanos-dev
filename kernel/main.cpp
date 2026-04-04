@@ -36,6 +36,7 @@
 #include "terminal.hpp"
 #include "fat.hpp"
 #include "syscall.hpp"
+#include "clipboard.hpp"
 
 
 int printk(const char* format, ...){
@@ -171,6 +172,7 @@ extern "C" void KernelMainNewStack(
     task_manager->NewTask()
             .InitContext(TaskTerminal, 0)
             .Wakeup();
+    InitializeClipBoard();
 
     char str[128];
 
