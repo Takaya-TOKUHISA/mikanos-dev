@@ -56,6 +56,8 @@ class Terminal {
         void DrawCursor(bool visible);
         Vector2D<int> CalcCursorPos() const;
         void MoveCursor(int direction);
+        int InsertString(const char* str, int len);
+        void DeleteString(const char* str, int len);
 
         int linebuf_index_{0};
         std::array<char, kLineMax> linebuf_{};

@@ -75,6 +75,9 @@ namespace fat {
 
     std::pair<DirectoryEntry*, bool>
     FindFile(const char* path, unsigned long directory_cluster) {
+        if (strlen(path) >= 13) {
+            return { nullptr, false };
+        }
         /* 第一引数のみにすることでルートから探索する */
         if (path[0] == '/') {
             directory_cluster = boot_volume_image->root_cluster;
