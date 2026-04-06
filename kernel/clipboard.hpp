@@ -2,6 +2,21 @@
 
 #include "error.hpp"
 
+class ClipArea {
+    public:
+        ClipArea();
+        
+        void SelectArea(int pos, int direction);
+        void FreeArea();
+        int Start() const { return start; }
+        int End() const { return end; }
+
+    private:
+        bool selecting_;
+        int start;
+        int end;
+};
+
 class ClipBoard {
     public:
         ClipBoard(unsigned int capacity = 4095);

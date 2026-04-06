@@ -15,6 +15,7 @@
 #include "task.hpp"
 #include "layer.hpp"
 #include "fat.hpp"
+#include "clipboard.hpp"
 
 struct AppLoadInfo {
     uint64_t vaddr_end, entry;
@@ -55,11 +56,12 @@ class Terminal {
         bool cursor_visible_{false};
         void DrawCursor(bool visible);
         Vector2D<int> CalcCursorPos() const;
-        void MoveCursor(int direction);
+        void MoveCursor(uint8_t modifier, int direction);
         int InsertString(const char* str, int len);
-        void DeleteString(const char* str, int len);
+        void Copy();
 
         int linebuf_index_{0};
+        ClipArea clip_area_{};
         std::array<char, kLineMax> linebuf_{};
         void Scroll1();
 

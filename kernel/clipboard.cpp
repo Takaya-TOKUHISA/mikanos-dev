@@ -2,6 +2,29 @@
 
 #include <cstring>
 
+ClipArea::ClipArea() : selecting_{false}, start{-1}, end{-1} {}
+
+void ClipArea::SelectArea(int pos, int direction) {
+    if (selecting_ == false) {
+        selecting_ = true;
+        start = std::min(pos, pos+direction);
+        end = std::min(pos, pos+direction);
+    } else {
+        end += direction;
+        if (start == end) {
+            FreeArea();
+        }
+    }
+}
+
+void ClipArea::FreeArea() {
+    if (selecting_) {
+        selecting_ = false;
+        start = -1;
+        end = -1;
+    }
+}
+
 ClipBoard* clip_board = nullptr;
 
 ClipBoard::ClipBoard(unsigned int capacity) : 

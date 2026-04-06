@@ -13,7 +13,6 @@
 #include "timer.hpp"
 #include "keyboard.hpp"
 #include "logger.hpp"
-#include "clipboard.hpp"
 
 namespace {
 
@@ -307,8 +306,13 @@ Vector2D<int> Terminal::CalcCursorPos() const {
         Vector2D<int>{4 + 8 * cursor_.x, 4 + 16 * cursor_.y};
 }
 
-void Terminal::MoveCursor(int direction) {
+void Terminal::MoveCursor(uint8_t modifier, int direction) {
     if (cursor_.x + direction >= 1 && cursor_.x + direction < kColumns && cursor_.x + direction <= linebuf_index_) {
+        if (modifier & (kLShiftBitMask | kRShiftBitMask)) {
+            clip_area_.SelectArea(cursor_.x, direction);
+        } else {
+            clip_area_.FreeArea();
+        }
         cursor_.x += direction;
     }
     return;
@@ -320,65 +324,68 @@ Rectangle<int> Terminal::InputKey(
     DrawCursor(false);
     Rectangle<int> draw_area{CalcCursorPos(), {8*2, 16}};
 
-    if ((modifier & (kLControlBitMask | kRControlBitMask)) && ascii == 'c') {
-        clip_board->CopyString("test", 4);
-    } else if ((modifier & (kLControlBitMask | kRControlBitMask)) && ascii == 'v') {
-        char buf[4096];
-        clip_board->PasteString(buf, sizeof(buf));
-        auto len = strlen(buf);
-        len = InsertString(buf, len);
-        draw_area.size = {static_cast<int>(8*(cursor_.x - len + linebuf_index_)), 16};
-    } else if (ascii == '\n') {
-        linebuf_[linebuf_index_] = 0;
-        if (linebuf_index_ > 0) {
-            cmd_history_.pop_back();
-            cmd_history_.push_front(linebuf_);
-        }
-        linebuf_index_ = 0;
-        cmd_history_index_ = -1;
-        cursor_.x = 0;
-        if (cursor_.y < kRows - 1){
-            ++cursor_.y;
-        } else {
-            Scroll1();
-        }
-        ExecuteLine();
-        memset(&linebuf_[0], 0, sizeof(linebuf_));
-        Print(">");
-        linebuf_[0] = ' ';
-        ++linebuf_index_;
-        draw_area.pos = ToplevelWindow::kTopLeftMargin;
-        draw_area.size = window_->InnerSize();
-    } else if (ascii == '\b') {
-        if (cursor_.x > 1) {
-            --cursor_.x;
-            memmove(&linebuf_[cursor_.x], &linebuf_[cursor_.x + 1], linebuf_index_ - cursor_.x + 1);
-            if (show_window_) {
-                Rectangle<int> move_src{
-                    ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+cursor_.x*8+8, 4+cursor_.y*16},
-                    {8*(linebuf_index_ - cursor_.x), 16}
-                };
-                window_->RowMove(ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+cursor_.x*8, 4+cursor_.y*16}, move_src);
-                FillRectangle(*window_->Writer(), ToplevelWindow::kTopLeftMargin +
-                              Vector2D<int>{4 + 8 * linebuf_index_, 4 + 16 * cursor_.y}, {8, 16}, {0, 0, 0});
-            }
-            draw_area.pos = CalcCursorPos();
-
-            if (linebuf_index_ > 0) {
-                --linebuf_index_;
-            }
-        }
-    } else if (ascii != 0) {
-        const char* s = &ascii;
-        InsertString(s, 1);
-    } else if (keycode == 0x51) {
-        draw_area = HistoryUpDown(-1);
-    } else if (keycode == 0x52) {
-        draw_area = HistoryUpDown(1);
-    } else if (keycode == 0x50) {
-        MoveCursor(-1);
+    if (keycode == 0x50) {
+        MoveCursor(modifier, -1);
     } else if (keycode == 0x4f) {
-        MoveCursor(1);
+        MoveCursor(modifier, 1);
+    } else if ((modifier & (kLControlBitMask | kRControlBitMask)) && ascii == 'c') {
+        Copy();
+    } else {
+        clip_area_.FreeArea();
+        if ((modifier & (kLControlBitMask | kRControlBitMask)) && ascii == 'v') {
+            char buf[4096];
+            clip_board->PasteString(buf, sizeof(buf));
+            auto len = strlen(buf);
+            len = InsertString(buf, len);
+            draw_area.size = {static_cast<int>(8*(cursor_.x - len + linebuf_index_)), 16};
+        } else if (ascii == '\n') {
+            linebuf_[linebuf_index_] = 0;
+            if (linebuf_index_ > 0) {
+                cmd_history_.pop_back();
+                cmd_history_.push_front(linebuf_);
+            }
+            linebuf_index_ = 0;
+            cmd_history_index_ = -1;
+            cursor_.x = 0;
+            if (cursor_.y < kRows - 1){
+                ++cursor_.y;
+            } else {
+                Scroll1();
+            }
+            ExecuteLine();
+            memset(&linebuf_[0], 0, sizeof(linebuf_));
+            Print(">");
+            linebuf_[0] = ' ';
+            ++linebuf_index_;
+            draw_area.pos = ToplevelWindow::kTopLeftMargin;
+            draw_area.size = window_->InnerSize();
+        } else if (ascii == '\b') {
+            if (cursor_.x > 1) {
+                --cursor_.x;
+                memmove(&linebuf_[cursor_.x], &linebuf_[cursor_.x + 1], linebuf_index_ - cursor_.x + 1);
+                if (show_window_) {
+                    Rectangle<int> move_src{
+                        ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+cursor_.x*8+8, 4+cursor_.y*16},
+                        {8*(linebuf_index_ - cursor_.x), 16}
+                    };
+                    window_->RowMove(ToplevelWindow::kTopLeftMargin + Vector2D<int>{4+cursor_.x*8, 4+cursor_.y*16}, move_src);
+                    FillRectangle(*window_->Writer(), ToplevelWindow::kTopLeftMargin +
+                                Vector2D<int>{4 + 8 * linebuf_index_, 4 + 16 * cursor_.y}, {8, 16}, {0, 0, 0});
+                }
+                draw_area.pos = CalcCursorPos();
+
+                if (linebuf_index_ > 0) {
+                    --linebuf_index_;
+                }
+            }
+        } else if (ascii != 0) {
+            const char* s = &ascii;
+            InsertString(s, 1);
+        } else if (keycode == 0x51) {
+            draw_area = HistoryUpDown(-1);
+        } else if (keycode == 0x52) {
+            draw_area = HistoryUpDown(1);
+        }
     }
     Log(kWarn, "cursor_.x: %d, linebuf_index_: %d\n", cursor_.x, linebuf_index_);
     for (int i = 0; i < linebuf_index_; ++i) {
@@ -386,6 +393,8 @@ Rectangle<int> Terminal::InputKey(
     }
     Log(kWarn, "\n");
     DrawCursor(true);
+    Log(kWarn, "start:%d, %c, end:%d, %c\n", clip_area_.Start(), linebuf_[clip_area_.Start()],
+                                             clip_area_.End(), linebuf_[clip_area_.End()]);
 
     return draw_area;
 }
@@ -424,6 +433,19 @@ int Terminal::InsertString(const char* s, int len) {
         Log(kWarn, "len: %d", len);
     }
     return 0;
+}
+
+void Terminal::Copy() {
+    auto start = std::min(clip_area_.Start(), clip_area_.End());
+    auto end = std::max(clip_area_.Start(), clip_area_.End());
+    if (start < 0 || end <= start) {
+        return;
+    }
+
+    char buf[4096];
+    const auto copy_len = std::min<int>(end - start + 1, sizeof(buf));
+    memcpy(buf, &linebuf_[start], copy_len);
+    clip_board->CopyString(buf, copy_len);
 }
 
 void Terminal::ExecuteLine() {
