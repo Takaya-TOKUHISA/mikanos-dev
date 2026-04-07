@@ -58,7 +58,10 @@ class Terminal {
         Vector2D<int> CalcCursorPos() const;
         void MoveCursor(uint8_t modifier, int direction);
         int InsertString(const char* str, int len);
+        Vector2D<int> DeleteString(int pos, int len);
         void Copy();
+        void Cut();
+        
 
         int linebuf_index_{0};
         ClipArea clip_area_{};

@@ -8,6 +8,8 @@ class ClipArea {
         
         void SelectArea(int pos, int direction);
         void FreeArea();
+        std::pair<int, int> GetRegularArea() const;
+
         int Start() const { return start; }
         int End() const { return end; }
 

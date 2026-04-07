@@ -8,7 +8,7 @@ void ClipArea::SelectArea(int pos, int direction) {
     if (selecting_ == false) {
         selecting_ = true;
         start = std::min(pos, pos+direction);
-        end = std::min(pos, pos+direction);
+        end = start;
     } else {
         end += direction;
         if (start == end) {
@@ -23,6 +23,10 @@ void ClipArea::FreeArea() {
         start = -1;
         end = -1;
     }
+}
+
+std::pair<int, int> ClipArea::GetRegularArea() const {
+    return {std::min(start, end), std::max(start, end)-std::min(start, end)+1};
 }
 
 ClipBoard* clip_board = nullptr;
