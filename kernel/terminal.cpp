@@ -365,8 +365,10 @@ Rectangle<int> Terminal::InputKey(
         } else if (ascii == '\b') {
             draw_area.pos = DeleteString(cursor_.x-1, 1);
         } else if (ascii != 0) {
+            auto before_cursor = cursor_.x;
             const char* s = &ascii;
             InsertString(s, 1);
+            draw_area.size = {static_cast<int>(8*(linebuf_index_ - before_cursor + 1)), 16};
         } else if (keycode == 0x51) {
             draw_area = HistoryUpDown(-1);
         } else if (keycode == 0x52) {
