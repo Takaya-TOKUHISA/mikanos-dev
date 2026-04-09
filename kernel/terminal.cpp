@@ -334,7 +334,6 @@ Rectangle<int> Terminal::InputKey(
         Cut();
         clip_area_.FreeArea();
     } else {
-        clip_area_.FreeArea();
         if ((modifier & (kLControlBitMask | kRControlBitMask)) && ascii == 'v') {
             char buf[4096];
             clip_board->PasteString(buf, sizeof(buf));
@@ -363,7 +362,12 @@ Rectangle<int> Terminal::InputKey(
             draw_area.pos = ToplevelWindow::kTopLeftMargin;
             draw_area.size = window_->InnerSize();
         } else if (ascii == '\b') {
-            draw_area.pos = DeleteString(cursor_.x-1, 1);
+            if(clip_area_.Selecting()) {
+                auto [ start, len ] = clip_area_.GetRegularArea();
+                draw_area.pos = DeleteString(start, len);
+            } else {
+                draw_area.pos = DeleteString(cursor_.x-1, 1);
+            }
         } else if (ascii != 0) {
             auto before_cursor = cursor_.x;
             const char* s = &ascii;
@@ -374,6 +378,7 @@ Rectangle<int> Terminal::InputKey(
         } else if (keycode == 0x52) {
             draw_area = HistoryUpDown(1);
         }
+        clip_area_.FreeArea();
     }
     Log(kWarn, "cursor_.x: %d, linebuf_index_: %d\n", cursor_.x, linebuf_index_);
     for (int i = 0; i < linebuf_index_; ++i) {
@@ -383,7 +388,6 @@ Rectangle<int> Terminal::InputKey(
     DrawCursor(true);
     Log(kWarn, "start:%d, %c, end:%d, %c\n", clip_area_.Start(), linebuf_[clip_area_.Start()],
                                              clip_area_.End(), linebuf_[clip_area_.End()]);
-
     return draw_area;
 }
 

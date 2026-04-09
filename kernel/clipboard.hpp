@@ -12,6 +12,8 @@ class ClipArea {
 
         int Start() const { return start; }
         int End() const { return end; }
+        bool Selecting() const { return selecting_; }
+
 
     private:
         bool selecting_;
