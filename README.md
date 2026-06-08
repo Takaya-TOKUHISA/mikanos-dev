@@ -615,6 +615,7 @@
     - 文字挿入、削除を複数文字・範囲選択に対応する形に改修
     
 </details>
+
 ## Credits
 This project is based on the book:
 - **"ゼロからのOS自作入門" (MikanOS)** by [Kouta Uchida (uchan-nos)](https://github.com/uchan-nos/mikanos)
