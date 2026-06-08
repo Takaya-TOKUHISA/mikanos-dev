@@ -606,7 +606,15 @@
     - 行中での文字削除，挿入ではそれに付随してそれ以降の文字列が一文字文平行移動する．そのため，`Move`を横方向にも可能にした`RowMove`を用いて，平行移動を再現し再描画の負荷を減らしつつ削除，挿入を実現した．
     - `cursor_pos_.x`が`line_buf_index_`(行末)以降や画面外に移動したりしないように境界チェックを行ったうえで`cursor_pos_.x`を任意文字分水平移動させる関数`MoveCursor`を追加した．
 </details>
+<details>
+<summary><big><b>コピーペースト機能</b></big></summary> 
 
+- **変更内容**
+    - 選択範囲の情報を保持する`ClipArea`クラスを作成
+    - コピーされた文字列を保持する`ClipBoard`クラスをカーネルに一つ配置し全アプリ・タスクで共用
+    - 文字挿入、削除を複数文字・範囲選択に対応する形に改修
+    
+</details>
 ## Credits
 This project is based on the book:
 - **"ゼロからのOS自作入門" (MikanOS)** by [Kouta Uchida (uchan-nos)](https://github.com/uchan-nos/mikanos)
